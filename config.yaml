@@ -1,13 +1,19 @@
 # Network parameters configuration
+f_model: DQlearning  # DQlearning, surr_opt # Model function or optimization strategy
 setting: tao  # Experimental setting identifier
-num_replications: 3
+surrogate_num: 1  # Indicates the surrogate model configuration number
+option_sur: 4  # Specifies the operational mode or variant of the surrogate model
 device: None  # Computation device, dynamically set to 'cuda' if GPU is available
 noiseless: True  # Boolean flag to indicate if noise should be excluded in simulations
-sample_size: 15000  # Number of samples to be used
-training_validation_prop: 0.5  # Proportion of data for training vs validation
+sample_size: 30000  # Number of samples to be used
+num_replications: 3
+job_id: tao
+
+training_validation_prop: 0.7  # Proportion of data for training vs validation
 n_epoch: 150  # Number of training epochs
+batch_size: 3000  # Batch size calculated as a proportion of sample size
 num_networks: 2  # Number of parallel networks or models
-activation_function: ELU
+activation_function: elu # elu, relu
 input_dim_stage1: 5  # Input dimension for stage 1, [O1] --> [x1, x2, x3, x4, x5]
 output_dim_stage1: 1  # Output dimension for stage 1
 input_dim_stage2: 7  # Input dimension for stage 2, includes [O1, A1, Y1, O2]
@@ -15,15 +21,13 @@ output_dim_stage2: 1  # Output dimension for stage 2
 hidden_dim_stage1: 20  # Number of neurons in the hidden layer of stage 1
 hidden_dim_stage2: 20  # Number of neurons in the hidden layer of stage 2
 dropout_rate: 0.4  # Dropout rate to prevent overfitting
+
 optimizer_type: adam  # Optimizer type, can be 'adam' or 'rmsprop'
 optimizer_lr: 0.07  # Learning rate for the optimizer
 optimizer_weight_decay: 0.001  # Weight decay (L2 regularization) helps prevent overfitting
+
 use_scheduler: True
 scheduler_type: reducelronplateau  # Type of learning rate scheduler, can be 'reducelronplateau', 'steplr', or 'cosineannealing'
 scheduler_step_size: 30  # Step size for StepLR, defines the number of epochs before the next LR decay
 scheduler_gamma: 0.8  # Decay rate for learning rate under StepLR
 initializer: he  # He initialization method (Kaiming initialization)
-batch_size: 3000  # Batch size calculated as a proportion of sample size
-f_model: surr_opt  # Model function or optimization strategy
-surrogate_num: 1  # Indicates the surrogate model configuration number
-option_sur: 4  # Specifies the operational mode or variant of the surrogate model

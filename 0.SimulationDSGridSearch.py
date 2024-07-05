@@ -1,3 +1,4 @@
+import os
 import sys
 from tqdm import tqdm
 from tqdm.notebook import tqdm
@@ -8,6 +9,7 @@ from utils import *
 import concurrent.futures
 from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
+import time
 
 
 
@@ -139,7 +141,7 @@ def surr_opt(tuple_train, tuple_val, params):
         # Update the scheduler with the current epoch's validation loss
         update_scheduler(scheduler, params, val_loss)
 
-    model_dir = 'models'
+    model_dir = f"models/{params['job_id']}"
     # Check if the directory exists, if not, create it
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
@@ -156,17 +158,38 @@ def surr_opt(tuple_train, tuple_val, params):
 
 
 
+def DQlearning(tuple_train, tuple_val, params):
+    train_input_stage1, train_input_stage2, _, train_Y1, train_Y2, train_A1, train_A2 = tuple_train
+    val_input_stage1, val_input_stage2, _, val_Y1, val_Y2, val_A1, val_A2 = tuple_val
+
+
+    nn_stage1, optimizer_1, scheduler_1 = initialize_model_and_optimizer(params, 1)
+    nn_stage2, optimizer_2, scheduler_2 = initialize_model_and_optimizer(params, 2)
+
+    train_losses_stage2, val_losses_stage2, epoch_num_model_2 = train_and_validate(nn_stage2, optimizer_2, scheduler_2, train_input_stage2, train_A2, train_Y2, 
+                                                                                   val_input_stage2, val_A2, val_Y2, params, 2)
+    # params['batch_size'], device, params['n_epoch'], 2, params['sample_size'], params)
+
+    train_Y1_hat = evaluate_model_on_actions(nn_stage2, train_input_stage2, train_A2) + train_Y1
+    val_Y1_hat = evaluate_model_on_actions(nn_stage2, val_input_stage2, val_A2) + val_Y1
+
+    train_losses_stage1, val_losses_stage1, epoch_num_model_1 = train_and_validate(nn_stage1, optimizer_1, scheduler_1, train_input_stage1, train_A1, train_Y1_hat, 
+                                                                                   val_input_stage1, val_A1, val_Y1_hat, params, 1)
+    # params['batch_size'], device, params['n_epoch'], 1, params['sample_size'])
+
+    return (nn_stage1, nn_stage2, (train_losses_stage1, train_losses_stage2, val_losses_stage1, val_losses_stage2))
+
+
+
 
 def eval_DTR(V_replications, num_replications, nn_stage1, nn_stage2, df, params):
-
-    sample_size = params['sample_size'] 
 
     # Generate and preprocess data for evaluation
     processed_result = generate_and_preprocess_data(params, replication_seed=num_replications, run='test')
     test_input_stage1, test_input_stage2, Ci_tensor, Y1_tensor, Y2_tensor, A1_tensor_test, A2_tensor_test, P_A1_g_H1, P_A2_g_H2, d1_star, d2_star, Z1, Z2  = processed_result
 
-    nn_stage1 = initialize_and_load_model(1, sample_size, params)
-    nn_stage2 = initialize_and_load_model(2, sample_size, params)
+    nn_stage1 = initialize_and_load_model(1, params['sample_size'] , params)
+    nn_stage2 = initialize_and_load_model(2, params['sample_size'] , params)
 
     # Calculate test outputs for all networks in stage 1
     A1, test_outputs_stage1 = compute_test_outputs(nn = nn_stage1, test_input = test_input_stage1, A_tensor = A1_tensor_test, params=params, is_stage1=True)
@@ -219,8 +242,12 @@ def simulations(num_replications, V_replications, params):
 
         # Estimate treatment regime : model --> surr_opt
         logging.info("Training started!")
-        nn_stage1, nn_stage2, trn_val_loss_tpl, epoch_num_model = surr_opt(tuple_train, tuple_val, params)
-        epoch_num_model_lst.append(epoch_num_model)
+        if params['f_model'] == 'DQlearning':
+            nn_stage1, nn_stage2, trn_val_loss_tpl = DQlearning(tuple_train, tuple_val, params)
+        else:
+            nn_stage1, nn_stage2, trn_val_loss_tpl, epoch_num_model = surr_opt(tuple_train, tuple_val, params)
+            epoch_num_model_lst.append(epoch_num_model)
+            
         losses_dict[replication] = trn_val_loss_tpl
         
         # eval_DTR
@@ -319,20 +346,12 @@ def run_training(config, config_updates, V_replications, replication_seed):
 #     main()
     
 
-
-
-
-
-
-
-        
-        
-        
+    
         
 # parallelized version
     
 def run_training_with_params(params):
-    logging.basicConfig(filename='output.txt', level=logging.INFO, format='%(message)s')
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logger = logging.getLogger(__name__) 
 
     config, current_config, V_replications, i = params
@@ -345,12 +364,15 @@ def run_grid_search(config, param_grid):
     all_dfs = pd.DataFrame()  # DataFrames from each run
     all_losses_dicts = []  # Losses from each run
     all_epoch_num_lists = []  # Epoch numbers from each run 
-    grid_replications = 2
+    grid_replications = 1
 
     # Collect all parameter combinations
     param_combinations = [dict(zip(param_grid.keys(), param)) for param in product(*param_grid.values())]
 
-    with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
+    num_workers = multiprocessing.cpu_count()
+    logging.info(f'{num_workers} available workers for ProcessPoolExecutor.')
+
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
         future_to_params = {}
         for current_config in param_combinations:
             for i in range(grid_replications): 
@@ -391,194 +413,183 @@ def run_grid_search(config, param_grid):
             logging.info(f'\nPerformances for configuration: \n{key}')
             logging.info(f'\n{results[key].to_string()}')
 
-    save_simulation_data(all_dfs, all_losses_dicts, all_epoch_num_lists, results)
-    load_and_process_data(config)
-
-def main():
-    
-    # setup_logging
-    logging.basicConfig(filename='output.txt', level=logging.INFO, format='%(asctime)s %(message)s')
-    logger = logging.getLogger(__name__) 
-
-    # Load configuration and set up the device
-    config = load_config()
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    config['device'] = device
-
-    training_validation_prop = config['training_validation_prop']
-    train_size = int(training_validation_prop * config['sample_size'])
-    logging.info("Training size: %d", train_size)
-
-
-    # Define parameter grid for grid search
-    param_grid = {
-        'activation_function': ['ELU'],
-        'batch_size': [1024, 3072],
-        'learning_rate': [0.007],
-        'num_layers': [4]
-    }
-    # Perform operations whose output should go to the file
-    run_grid_search(config, param_grid)
-    
-
-if __name__ == '__main__':
-    multiprocessing.set_start_method('spawn', force=True)
-    main()
-    
-
-
-
-
-
-
-
-
-
+    folder = f"data/{config['job_id']}"
+    save_simulation_data(all_dfs, all_losses_dicts, all_epoch_num_lists, results, folder)
+    load_and_process_data(config, folder)
 
     
-    
-    
-
-
-
-
-# setting = 'tao'
-# f_model = 'surr_opt'
-# print("\n")
-
-# sample_size = 15000  # 500, 1000 are the cases to check
-# num_replications = 3
-# n_epoch = 150 # 150
-
-# training_validation_prop = 0.5 #0.95 #0.01
-# train_size = int(training_validation_prop * sample_size)
-# print("Training size: ", train_size)
-
-# # batch_prop = 0.2 #0.07, 0.2
-# batch_size = 512 # 64, 128, 256, 512, 3000
-# print("Mini-batch size: ", batch_size)
-
-
-# noiseless = True # True False. # no noise
-# tree_type =  True # True False
-
-# surrogate_num = 1 # 1 - old multiplicative one  2- new one
-# option_sur = 2 # 2, 4 # if surrogate_num = 1 then from 1-5 options, if surrogate_num = 2 then 1-> assymetric, 2 -> symmetric
-
-
-# # Set the device
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-
-# network_parameters_surogate = {
-#   'setting': setting,
-#   'device':device,
-#   'noiseless':noiseless,   # Boolean flag to indicate if the noise
-#   'sample_size':sample_size,
-#   'batch_size': batch_size, # math.ceil(batch_prop*sample_size), #int(0.038*sample_size),
-#   'training_validation_prop':training_validation_prop,
-#   'n_epoch': n_epoch,
-#   'num_networks': 2,
-#   'input_dim_stage1': 5, # [O1] --> [x1,...x5]
-#   'output_dim_stage1': 1,
-#   'input_dim_stage2': 7, # [O1, A1, Y1, O2]
-
-#   'output_dim_stage2': 1,
-#   'hidden_dim_stage1': 20, #20
-#   'hidden_dim_stage2': 20, #20
-#   'dropout_rate': 0.4, #0.3, 0.43
-
-#   'optimizer_type': 'adam',  # Can be 'adam' or 'rmsprop'
-#   'optimizer_lr': 0.07, # 0.07, 0.007
-#   'optimizer_weight_decay': 0.001,  #1e-4,  Default: 0. Weight decay (L2 regularization) helps prevent overfitting by penalizing large weights.
-
-#   'use_scheduler': True, # True False
-#   'scheduler_type': 'reducelronplateau',  # Can be 'reducelronplateau', 'steplr', or 'cosineannealing'
-#   'scheduler_step_size': 30, # optim.lr_scheduler.StepLR
-#   'scheduler_gamma': 0.8,
-
-#   'initializer': 'he', # he, custon # He initialization (aka Kaiming initialization)
-
-#   # 'f_model': 'surr_opt',
-#   'surrogate_num': surrogate_num,
-#   'option_sur': option_sur, # if surrogate_num = 1 then 5 options, if surrogate_num = 2 then 1-> assymetric, 2 -> symmetric
-# }
-
-# # Initialize V_replications dictionary
-# V_replications = {"V_replications_M1_pred": [], "V_replications_M1_behavioral": [], "V_replications_M1_optimal": []}
-
-# print('DGP Setting: ' , setting)
-# print("f_model: ", f_model)
-
-# # Run the simulation
-# V_replications, df, losses_dict, epoch_num_model_lst = simulations(num_replications, V_replications, network_parameters_surogate)
-# summarize_v_values(V_replications, num_replications)
-# accuracy_df = calculate_accuracies(df, V_replications)
-# print(accuracy_df)
-
-# selected_indices = [i for i in range(num_replications)]
-# plot_simulation_surLoss_losses_in_grid(selected_indices, losses_dict, n_epoch)
-
-
-
-
-
-
-
 # def main():
-#     # Load configuration and set up the device, etc.
-#     config = load_config()
-#     config['device'] = 'cuda' if torch.cuda.is_available() else 'cpu'
+    
+#     # setup_logging
+#     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+#     logger = logging.getLogger(__name__) 
 
+#     # Load configuration and set up the device
+#     config = load_config()
+#     logging.info("Model used: %s", config['f_model'])
+
+#     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+#     config['device'] = device
+
+#     job_id = os.getenv('SLURM_JOB_ID')
+#     config['job_id'] = job_id
+
+#     training_validation_prop = config['training_validation_prop']
+#     train_size = int(training_validation_prop * config['sample_size'])
+#     logging.info("Training size: %d", train_size)
+
+#     if config['f_model'] != 'surr_opt':
+#         config['input_dim_stage1'] = 6
+#         config['input_dim_stage2'] = 8 
+#         config['num_networks'] = 1
+
+    
+#     # Define parameter grid for grid search
 #     param_grid = {
-#         'activation_function': ['ELU'],
-#         'batch_size': [1024, 3072],
+#         'activation_function': ['relu', 'elu'],
+#         'batch_size': [3072],
 #         'learning_rate': [0.007],
 #         'num_layers': [4]
 #     }
+
+# #     # Define parameter grid for grid search
+# #     param_grid = {
+# #         'activation_function': ['relu', 'elu'],
+# #         'batch_size': [64, 768, 3072],
+# #         'learning_rate': [0.007],
+# #         'num_layers': [4]
+# #     }
     
-#     # Flatten the param_grid into a list of dictionaries
-#     param_list = [dict(zip(param_grid, x)) for x in product(*param_grid.values())]
+#     # # Define parameter grid for grid search
+#     # param_grid = {
+#     #     'activation_function': ['relu', 'elu'],
+#     #     'batch_size': [64, 256, 768],
+#     #     'learning_rate': [0.0007, 0.007, 0.07],
+#     #     'num_layers': [2, 5, 7, 10]
+#     # } 
+    
+#     # Perform operations whose output should go to the file
+#     run_grid_search(config, param_grid)
+    
+    
+# if __name__ == '__main__':
+#     multiprocessing.set_start_method('spawn', force=True)
+#     start_time = time.time()
+#     main()
+#     end_time = time.time()
+#     logging.info(f'Total time taken: {end_time - start_time:.2f} seconds')
 
-#     # Use ProcessPoolExecutor to parallelize the grid search
-#     results = []
-#     with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
-#         future_to_params = {executor.submit(run_single_grid_search, config, params): params for params in param_list}
-#         for future in concurrent.futures.as_completed(future_to_params):
-#             params = future_to_params[future]
-#             try:
-#                 result = future.result()
-#                 results.append(result)
-#                 print(f'Results for parameters {params}: {result}')
-#             except Exception as exc:
-#                 print(f'{params} generated an exception: {exc}')
 
-#     # Assuming you have some method to handle results aggregation
-#     process_results(results)
+
+
 
 
 
     
-# def run_single_grid_search(config, params):
-#     current_config = dict(zip(config['param_keys'], params))
-#     performances = pd.DataFrame()
+    
+    
 
-#     V_replications = {
-#         "V_replications_M1_pred": [],
-#         "V_replications_M1_behavioral": [],
-#         "V_replications_M1_optimal": []
-#     }
-#     for i in range(config['grid_replications']):
-#         performance, df, losses_dict, epoch_num_model_lst = run_training(config, current_config, V_replications, replication_seed=i)
-#         performances = pd.concat([performances, performance], axis=0)
 
-#     # Store results
-#     config_key = json.dumps(current_config, sort_keys=True)
-#     results = {
-#         'config_key': config_key,
-#         'performances': performances.mean().to_dict(),
-#         'df': df,
-#         'losses_dict': losses_dict,
-#         'epoch_num_model_lst': epoch_num_model_lst
-#     }
-#     return results
+
+
+setting = 'tao'
+f_model = 'DQlearning' #  'DQlearning', 'surr_opt'
+print("\n")
+
+sample_size = 15000  # 500, 1000 are the cases to check
+num_replications = 3
+n_epoch = 150 # 150
+
+training_validation_prop = 0.5 #0.95 #0.01
+train_size = int(training_validation_prop * sample_size)
+print("Training size: ", train_size)
+
+# batch_prop = 0.2 #0.07, 0.2
+batch_size = 3000 # 64, 128, 256, 512, 3000
+print("Mini-batch size: ", batch_size)
+
+
+noiseless = True # True False. # no noise
+tree_type =  True # True False
+
+surrogate_num = 1 # 1 - old multiplicative one  2- new one
+option_sur = 2 # 2, 4 # if surrogate_num = 1 then from 1-5 options, if surrogate_num = 2 then 1-> assymetric, 2 -> symmetric
+
+
+# Set the device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
+    
+
+config = {
+    
+  'f_model' : f_model, 
+  'setting': setting,
+  'device':device,
+  'noiseless':noiseless,   # Boolean flag to indicate if the noise
+  'sample_size':sample_size,
+  'batch_size': batch_size, # math.ceil(batch_prop*sample_size), #int(0.038*sample_size),
+  'training_validation_prop':training_validation_prop,
+  'n_epoch': n_epoch,
+  'job_id':'taoV',
+    
+  'num_networks': 2,
+  'input_dim_stage1': 5, # [O1] --> [x1,...x5]
+  'output_dim_stage1': 1,
+  'input_dim_stage2': 7, # [O1, A1, Y1, O2]
+  'output_dim_stage2': 1,
+  'hidden_dim_stage1': 20, #20
+  'hidden_dim_stage2': 20, #20
+  'dropout_rate': 0.4, #0.3, 0.43
+  'activation_function':'relu',
+
+  'optimizer_type': 'adam',  # Can be 'adam' or 'rmsprop'
+  'optimizer_lr': 0.07, # 0.07, 0.007
+  'optimizer_weight_decay': 0.001,  #1e-4,  Default: 0. Weight decay (L2 regularization) helps prevent overfitting by penalizing large weights.
+
+  'use_scheduler': True, # True False
+  'scheduler_type': 'reducelronplateau',  # Can be 'reducelronplateau', 'steplr', or 'cosineannealing'
+  'scheduler_step_size': 30, # optim.lr_scheduler.StepLR
+  'scheduler_gamma': 0.8,
+
+  'initializer': 'he', # he, custon # He initialization (aka Kaiming initialization)
+
+  # 'f_model': 'surr_opt',
+  'surrogate_num': surrogate_num,
+  'option_sur': option_sur, # if surrogate_num = 1 then 5 options, if surrogate_num = 2 then 1-> assymetric, 2 -> symmetric
+}
+
+
+if config['f_model'] != 'surr_opt':
+    config['input_dim_stage1'] = 6
+    config['input_dim_stage2'] = 8 
+    config['num_networks'] = 1
+
+job_id = os.getenv('SLURM_JOB_ID')
+config['job_id'] = job_id
+
+
+# Initialize V_replications dictionary
+V_replications = {"V_replications_M1_pred": [], "V_replications_M1_behavioral": [], "V_replications_M1_optimal": []}
+
+print('DGP Setting: ' , setting)
+print("f_model: ", f_model)
+
+# Run the simulation
+V_replications, df, losses_dict, epoch_num_model_lst = simulations(num_replications, V_replications, config)
+# summarize_v_values(V_replications, num_replications)
+accuracy_df = calculate_accuracies(df, V_replications)
+print(accuracy_df)
+
+run_name = f"Simulation run trainVval"
+selected_indices = [i for i in range(num_replications)]
+folder = f"data/{config['job_id']}"
+
+if  config['f_model'] == 'surr_opt' : 
+    plot_simulation_surLoss_losses_in_grid(selected_indices, losses_dict, n_epoch, run_name, folder)
+else:
+    plot_simulation_Qlearning_losses_in_grid(selected_indices, losses_dict, run_name, folder)
+
+
+

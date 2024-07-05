@@ -2,6 +2,7 @@ import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from tqdm import tqdm
 from tqdm.notebook import tqdm
 import warnings
 import numpy as np
@@ -11,6 +12,7 @@ import yaml
 import matplotlib.pyplot as plt
 from collections import Counter
 import logging
+import torch.nn.functional as F
 
 
 
@@ -50,7 +52,7 @@ def extract_unique_treatment_values(df, columns_to_process):
     return unique_values
 
 
-def save_simulation_data(global_df, all_losses_dicts, all_epoch_num_lists, results, folder='data'):
+def save_simulation_data(global_df, all_losses_dicts, all_epoch_num_lists, results, folder):
     # Check if the folder exists, if not, create it
     if not os.path.exists(folder):
         os.makedirs(folder)
@@ -80,8 +82,11 @@ def save_simulation_data(global_df, all_losses_dicts, all_epoch_num_lists, resul
 
 
     
-def load_and_process_data(params, folder='data'):
-    
+def load_and_process_data(params, folder):
+    # Check if the folder exists, if not, create it
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+        
     # Define paths to the files
     df_path = os.path.join(folder, 'simulation_data.pkl')
     losses_path = os.path.join(folder, 'losses_dicts.pkl')
@@ -112,17 +117,26 @@ def load_and_process_data(params, folder='data'):
     for i, losses_dict in enumerate(all_losses_dicts):
         run_name = f"Simulation run trainVval_{i}"
         selected_indices = [i for i in range(params['num_replications'])]  
-        plot_simulation_surLoss_losses_in_grid(selected_indices, losses_dict, params['n_epoch'], run_name)
+        if  params['f_model'] == 'surr_opt' :
+            plot_simulation_surLoss_losses_in_grid(selected_indices, losses_dict, params['n_epoch'], run_name, folder)
+        else:
+            plot_simulation_Qlearning_losses_in_grid(selected_indices, losses_dict, run_name, folder)
 
-    # Plotting epoch frequencies for all runs
-    for i, epoch_num_list in enumerate(all_epoch_num_lists):
-        run_name = f"Simulation run epoch_num_{i}"        
-        plot_epoch_frequency(epoch_num_list, params['n_epoch'], run_name)  
+    # # Plotting epoch frequencies for all runs
+    # for i, epoch_num_list in enumerate(all_epoch_num_lists):
+        # run_name = f"Simulation run epoch_num_{i}"        
+        # plot_epoch_frequency(epoch_num_list, params['n_epoch'], run_name)  
 
     # Print results for each configuration
     logger.info("\n\n")
     for config_key, performance in results.items():
         logger.info("Configuration: %s\nAverage Performance:\n %s\n", config_key, performance.to_string(index=True, header=False))
+
+
+
+
+
+
 
 
 
@@ -175,7 +189,8 @@ def initialize_nn(params, stage):
         params[f'hidden_dim_stage{stage}'],
         params[f'output_dim_stage{stage}'],
         params['num_networks'],
-        dropout_rate=params['dropout_rate']
+        dropout_rate=params['dropout_rate'],
+        activation_fn_name = params['activation_function'],
     ).to(params['device'])
     return nn
 
@@ -196,22 +211,29 @@ def batches(N, batch_size, seed=0):
         yield batch_indices
 
 
-
-# BEST FOR TAO'S CASE
 class NNClass(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, num_networks, dropout_rate):
+    def __init__(self, input_dim, hidden_dim, output_dim, num_networks, dropout_rate, activation_fn_name):
         super(NNClass, self).__init__()
         self.networks = nn.ModuleList()
+        
+        # Map the string name to the actual activation function class
+        if activation_fn_name.lower() == 'elu':
+            activation_fn = nn.ELU
+        elif activation_fn_name.lower() == 'relu':
+            activation_fn = nn.ReLU
+        else:
+            raise ValueError(f"Unsupported activation function: {activation_fn_name}")
+
         for _ in range(num_networks):
             network = nn.Sequential(
                 nn.Linear(input_dim, hidden_dim),
-                nn.ELU(alpha=0.4),
+                activation_fn(),  # Instantiate the activation function
                 nn.Dropout(dropout_rate),
                 nn.Linear(hidden_dim, output_dim),
                 nn.BatchNorm1d(output_dim),
             )
             self.networks.append(network)
-
+            
     def forward(self, x):
         outputs = []
         for network in self.networks:
@@ -242,6 +264,43 @@ class NNClass(nn.Module):
 #         for _ in range(num_networks):
 #             network = nn.Sequential(
 #                 nn.Linear(input_dim, hidden_dim),
+#                 nn.ELU(alpha=0.4),
+#                 nn.Dropout(dropout_rate),
+#                 nn.Linear(hidden_dim, output_dim),
+#                 nn.BatchNorm1d(output_dim),
+#             )
+#             self.networks.append(network)
+
+#     def forward(self, x):
+#         outputs = []
+#         for network in self.networks:
+#             outputs.append(network(x))
+#         return outputs
+
+#     def he_initializer(self):
+#         for network in self.networks:
+#             for layer in network:
+#                 if isinstance(layer, nn.Linear):
+#                     nn.init.kaiming_normal_(layer.weight, mode='fan_out', nonlinearity='relu')
+#                     nn.init.constant_(layer.bias, 0)  # Biases can be initialized to zero
+
+#     def reset_weights(self):
+#         for network in self.networks:
+#             for layer in network:
+#                 if isinstance(layer, nn.Linear):
+#                     nn.init.constant_(layer.weight, 0.1)
+#                     nn.init.constant_(layer.bias, 0.0)
+
+
+
+
+# class NNClass(nn.Module):
+#     def __init__(self, input_dim, hidden_dim, output_dim, num_networks, dropout_rate):
+#         super(NNClass, self).__init__()
+#         self.networks = nn.ModuleList()
+#         for _ in range(num_networks):
+#             network = nn.Sequential(
+#                 nn.Linear(input_dim, hidden_dim),
 #                 nn.BatchNorm1d(hidden_dim),
 #                 nn.ReLU(),
 #                 nn.Dropout(dropout_rate),
@@ -321,7 +380,9 @@ class NNClass(nn.Module):
 
 
 
-# 2. plotting utils
+
+
+# 2. plotting and summary utils
 
 
 def plot_v_values(v_dict, num_replications, train_size):
@@ -337,6 +398,132 @@ def plot_v_values(v_dict, num_replications, train_size):
     plt.legend()
     plt.show()
 
+
+
+def plot_epoch_frequency(epoch_num_model_lst, n_epoch, run_name, folder='data'):
+    """
+    Plots a bar diagram showing the frequency of each epoch number where the model was saved.
+
+    Args:
+        epoch_num_model_lst (list of int): List containing the epoch numbers where models were saved.
+        n_epoch (int): Total number of epochs for reference in the title.
+    """
+    # Count the occurrences of each number in the list
+    frequency_counts = Counter(epoch_num_model_lst)
+
+    # Separate the keys and values for plotting
+    keys = sorted(frequency_counts.keys())
+    values = [frequency_counts[key] for key in keys]
+
+    # Create a bar chart
+    plt.figure(figsize=(10, 6))
+    plt.bar(keys, values, color='skyblue')
+
+    # Add title and labels
+    plt.title(f'Bar Diagram of Epoch Numbers: n_epoch={n_epoch}')
+    plt.xlabel('Epoch Number')
+    plt.ylabel('Frequency')
+
+    # Show the plot
+    plt.grid(True)
+
+    # Save the plot
+    plot_filename = os.path.join(folder, f"{run_name}.png")
+    plt.savefig(plot_filename)
+    logging.info(f"plot_epoch_frequency Plot saved as: {plot_filename}")
+    plt.close()  # Close the plot to free up memory
+
+
+
+def plot_simulation_surLoss_losses_in_grid(selected_indices, losses_dict, n_epoch, run_name, folder, cols=3):
+    # Ensure the directory exists
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+    
+    # Calculate the number of rows needed based on the number of selected indices and desired number of columns
+    rows = len(selected_indices) // cols + (len(selected_indices) % cols > 0)
+
+    # Create a figure and a set of subplots
+    fig, axes = plt.subplots(rows, cols, figsize=(5*cols, 4*rows))  # Adjust figure size as needed
+    fig.suptitle(f'Training and Validation Loss for Selected Simulations @ n_epoch = {n_epoch}')
+
+    # Flatten the axes array for easy indexing, in case of a single row or column
+    axes = axes.flatten()
+    
+    for i, idx in enumerate(selected_indices):
+        train_loss, val_loss = losses_dict[idx]
+
+        # Plot on the ith subplot
+        axes[i].plot(train_loss, label='Training')
+        axes[i].plot(val_loss, label='Validation')
+        axes[i].set_title(f'Simulation {idx}')
+        axes[i].set_xlabel('Epochs')
+        axes[i].set_ylabel('Loss')
+        axes[i].legend()
+
+    # Hide any unused subplots
+    for j in range(i + 1, len(axes)):
+        axes[j].axis('off')
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust the layout to make room for the subtitle
+
+    # Save the plot
+    plot_filename = os.path.join(folder, f"{run_name}.png")
+    plt.savefig(plot_filename)
+    logging.info(f"TrainVval Plot saved as: {plot_filename}")
+    plt.close(fig)  # Close the plot to free up memory
+
+
+def plot_simulation_Qlearning_losses_in_grid(selected_indices, losses_dict, run_name, folder, cols=3):
+
+    all_losses = {
+        'train_losses_stage1': {},
+        'train_losses_stage2': {},
+        'val_losses_stage1': {},
+        'val_losses_stage2': {}
+    }
+
+    # Iterate over each simulation and extract losses
+    for simulation, losses in losses_dict.items():
+        train_losses_stage1, train_losses_stage2, val_losses_stage1, val_losses_stage2 = losses
+
+        all_losses['train_losses_stage1'][simulation] = train_losses_stage1
+        all_losses['train_losses_stage2'][simulation] = train_losses_stage2
+        all_losses['val_losses_stage1'][simulation] = val_losses_stage1
+        all_losses['val_losses_stage2'][simulation] = val_losses_stage2
+
+    
+    rows = len(selected_indices) // cols + (len(selected_indices) % cols > 0)
+    fig, axes = plt.subplots(rows, cols, figsize=(5*cols, 4*rows))
+    fig.suptitle('Training and Validation Loss for Selected Simulations')
+
+    axes = axes.flatten()
+
+    for i, idx in enumerate(selected_indices):
+        # Check if the replication index exists in the losses for each type
+        if idx in all_losses['train_losses_stage1']:
+            axes[i].plot(all_losses['train_losses_stage1'][idx], label='Training Stage 1', linestyle='--')
+            axes[i].plot(all_losses['val_losses_stage1'][idx], label='Validation Stage 1', linestyle='-.')
+            axes[i].plot(all_losses['train_losses_stage2'][idx], label='Training Stage 2', linestyle='--')
+            axes[i].plot(all_losses['val_losses_stage2'][idx], label='Validation Stage 2', linestyle='-.')
+            axes[i].set_title(f'Simulation {idx}')
+            axes[i].set_xlabel('Epochs')
+            axes[i].set_ylabel('Loss')
+            axes[i].legend()
+        else:
+            axes[i].set_title(f'Simulation {idx} - Data not available')
+            axes[i].axis('off')
+
+    # Hide any unused subplots
+    for j in range(i + 1, len(axes)):
+        axes[j].axis('off')
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    # Save the plot
+    plot_filename = os.path.join(folder, f"{run_name}.png")
+    plt.savefig(plot_filename)
+    logging.info(f"TrainVval Plot Deep Q Learning saved as: {plot_filename}")
+    plt.close(fig)  # Close the plot to free up memory
 
 
 
@@ -392,38 +579,7 @@ def calculate_accuracies(df, V_replications):
 
 
 
-def plot_epoch_frequency(epoch_num_model_lst, n_epoch, run_name, folder='data'):
-    """
-    Plots a bar diagram showing the frequency of each epoch number where the model was saved.
 
-    Args:
-        epoch_num_model_lst (list of int): List containing the epoch numbers where models were saved.
-        n_epoch (int): Total number of epochs for reference in the title.
-    """
-    # Count the occurrences of each number in the list
-    frequency_counts = Counter(epoch_num_model_lst)
-
-    # Separate the keys and values for plotting
-    keys = sorted(frequency_counts.keys())
-    values = [frequency_counts[key] for key in keys]
-
-    # Create a bar chart
-    plt.figure(figsize=(10, 6))
-    plt.bar(keys, values, color='skyblue')
-
-    # Add title and labels
-    plt.title(f'Bar Diagram of Epoch Numbers: n_epoch={n_epoch}')
-    plt.xlabel('Epoch Number')
-    plt.ylabel('Frequency')
-
-    # Show the plot
-    plt.grid(True)
-
-    # Save the plot
-    plot_filename = os.path.join(folder, f"{run_name}.png")
-    plt.savefig(plot_filename)
-    logging.info(f"plot_epoch_frequency Plot saved as: {plot_filename}")
-    plt.close()  # Close the plot to free up memory
 
 
 
@@ -520,86 +676,6 @@ def main_loss_gamma(stage1_outputs, stage2_outputs, A1, A2, Ci, option, surrogat
     return loss
 
 
-
-
-
-
-
-
-
-
-
-
-
-# 4. train V validation loss function plot utils
-
-def plot_simulation_surLoss_losses_in_grid(selected_indices, losses_dict, n_epoch, run_name, folder="data", cols=3):
-    # Ensure the directory exists
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-    
-    # Calculate the number of rows needed based on the number of selected indices and desired number of columns
-    rows = len(selected_indices) // cols + (len(selected_indices) % cols > 0)
-
-    # Create a figure and a set of subplots
-    fig, axes = plt.subplots(rows, cols, figsize=(5*cols, 4*rows))  # Adjust figure size as needed
-    fig.suptitle(f'Training and Validation Loss for Selected Simulations @ n_epoch = {n_epoch}')
-
-    # Flatten the axes array for easy indexing, in case of a single row or column
-    axes = axes.flatten()
-    
-    for i, idx in enumerate(selected_indices):
-        train_loss, val_loss = losses_dict[idx]
-
-        # Plot on the ith subplot
-        axes[i].plot(train_loss, label='Training')
-        axes[i].plot(val_loss, label='Validation')
-        axes[i].set_title(f'Simulation {idx}')
-        axes[i].set_xlabel('Epochs')
-        axes[i].set_ylabel('Loss')
-        axes[i].legend()
-
-    # Hide any unused subplots
-    for j in range(i + 1, len(axes)):
-        axes[j].axis('off')
-
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust the layout to make room for the subtitle
-
-    # Save the plot
-    plot_filename = os.path.join(folder, f"{run_name}.png")
-    plt.savefig(plot_filename)
-    logging.info(f"TrainVval Plot saved as: {plot_filename}")
-    plt.close(fig)  # Close the plot to free up memory
-
-
-def plot_simulation_Qlearning_losses_in_grid(selected_indices, losses_dict, cols=3):
-    rows = len(selected_indices) // cols + (len(selected_indices) % cols > 0)
-    fig, axes = plt.subplots(rows, cols, figsize=(5*cols, 4*rows))
-    fig.suptitle('Training and Validation Loss for Selected Simulations')
-
-    axes = axes.flatten()
-
-    for i, idx in enumerate(selected_indices):
-        # Check if the replication index exists in the losses for each type
-        if idx in losses_dict['train_losses_stage1']:
-            axes[i].plot(losses_dict['train_losses_stage1'][idx], label='Training Stage 1', linestyle='--')
-            axes[i].plot(losses_dict['val_losses_stage1'][idx], label='Validation Stage 1', linestyle='-.')
-            axes[i].plot(losses_dict['train_losses_stage2'][idx], label='Training Stage 2', linestyle='--')
-            axes[i].plot(losses_dict['val_losses_stage2'][idx], label='Validation Stage 2', linestyle='-.')
-            axes[i].set_title(f'Simulation {idx}')
-            axes[i].set_xlabel('Epochs')
-            axes[i].set_ylabel('Loss')
-            axes[i].legend()
-        else:
-            axes[i].set_title(f'Simulation {idx} - Data not available')
-            axes[i].axis('off')
-
-    # Hide any unused subplots
-    for j in range(i + 1, len(axes)):
-        axes[j].axis('off')
-
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plt.show()
 
 
 def process_batches(model1, model2, data, params, optimizer, is_train=True):
@@ -702,28 +778,149 @@ def update_scheduler(scheduler, params, val_loss=None):
 
 
 
+
+
+
+
+# 3. Q learning utils
+
+def train_and_validate(model, optimizer, scheduler, train_inputs, train_actions, train_targets, val_inputs, val_actions, val_targets, params, stage_number):
+
+    batch_size, device, n_epoch, sample_size = params['batch_size'], params['device'], params['n_epoch'], params['sample_size']
+    train_losses, val_losses = [], []
+    best_val_loss = float('inf')
+    best_model_params = None
+    epoch_num_model = 0
+
+    for epoch in range(n_epoch):
+        model.train()
+        total_train_loss = 0
+
+        for batch_idx in batches(train_inputs.shape[0], batch_size, epoch):
+            batch_idx = batch_idx.to(device)
+            inputs_batch = torch.index_select(train_inputs, 0, batch_idx).to(device)
+            actions_batch = torch.index_select(train_actions, 0, batch_idx).to(device)
+            targets_batch = torch.index_select(train_targets, 0, batch_idx).to(device)
+            combined_inputs = torch.cat((inputs_batch, actions_batch.unsqueeze(-1)), dim=1)
+
+            optimizer.zero_grad()
+            outputs = model(combined_inputs)
+            loss = F.mse_loss(torch.cat(outputs, dim=0).view(-1), targets_batch)
+            # print("Qnn output: ", torch.cat(outputs, dim=0).view(-1))
+            # print("targets_batch: ", targets_batch)
+            total_train_loss += loss.item()
+            loss.backward(retain_graph=True)
+            optimizer.step()
+
+
+        num_batches_t = (train_inputs.shape[0] + batch_size - 1) // batch_size
+        avg_train_loss = total_train_loss / num_batches_t
+
+        train_losses.append(avg_train_loss)
+
+        model.eval()
+        total_val_loss = 0
+
+        with torch.no_grad():
+            for batch_idx in batches(val_inputs.shape[0], batch_size):
+                batch_idx = batch_idx.to(device)
+                inputs_batch = torch.index_select(val_inputs, 0, batch_idx).to(device)
+                actions_batch = torch.index_select(val_actions, 0, batch_idx).to(device)
+                targets_batch = torch.index_select(val_targets, 0, batch_idx).to(device)
+                combined_inputs = torch.cat((inputs_batch, actions_batch.unsqueeze(-1)), dim=1)
+
+                outputs = model(combined_inputs)
+                loss = F.mse_loss(torch.cat(outputs, dim=0).view(-1), targets_batch)
+
+                total_val_loss += loss.item()
+
+        num_batches_v = (val_inputs.shape[0] + batch_size - 1) // batch_size
+        avg_val_loss = total_val_loss / num_batches_v
+        val_losses.append(avg_val_loss)
+
+        if avg_val_loss < best_val_loss and epoch > 20:
+            epoch_num_model = epoch
+            best_val_loss = avg_val_loss
+            best_model_params = model.state_dict()
+
+        # scheduler.step()
+
+    # Define file paths for saving models
+    model_dir = f"models/{params['job_id']}"
+    # Check if the directory exists, if not, create it
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+        
+    # Save the best model parameters after all epochs
+    if best_model_params is not None:
+        model_path = os.path.join(model_dir, f'best_model_stage_Q_{stage_number}_{sample_size}.pt')
+        torch.save(best_model_params, model_path)
+        
+    return train_losses, val_losses, epoch_num_model
+
+
+def initialize_model_and_optimizer(params, stage):
+    nn = initialize_nn(params, stage).to(device)
+    optimizer = optim.Adam(nn.parameters(), lr=params['optimizer_lr'])
+    # optimizer = optim.Adam(nn.parameters(), lr=params['optimizer_lr'], betas=params['optimizer_betas'], eps=params['optimizer_eps'])
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=params['scheduler_step_size'], gamma=params['scheduler_gamma'])
+    return nn, optimizer, scheduler
+
+def evaluate_model_on_actions(model, inputs, action_t):
+    actions_list = [1, 2, 3]
+    outputs_list = []
+    for action_value in actions_list:
+        action_tensor = torch.full_like(action_t, action_value).unsqueeze(-1)
+        combined_inputs = torch.cat((inputs, action_tensor), dim=1).to(device)
+        with torch.no_grad():
+            outputs = model(combined_inputs)
+        outputs_list.append(outputs[0])
+
+    max_outputs, _ = torch.max(torch.cat(outputs_list, dim=1), dim=1)
+    return max_outputs
+
+
+
+
+
+
+
+
+
+
 # 5. Eval fn utils
 
 def compute_test_outputs(nn, test_input, A_tensor, params, is_stage1=True):
     with torch.no_grad():
-      # Perform the forward pass
-      test_outputs_i = nn(test_input)
+        if params['f_model'] == "surr_opt":
+            # Perform the forward pass
+            test_outputs_i = nn(test_input)
 
-      # Directly stack the required outputs and perform computations in a single step
-      test_outputs = torch.stack(test_outputs_i[:2], dim=1).squeeze()
+            # Directly stack the required outputs and perform computations in a single step
+            test_outputs = torch.stack(test_outputs_i[:2], dim=1).squeeze()
 
-      # Compute treatment assignments directly without intermediate variables
-      test_outputs = torch.stack([
-          torch.zeros_like(test_outputs[:, 0]),
-          -test_outputs[:, 0],
-          -test_outputs[:, 1]
-      ], dim=1)
+            # Compute treatment assignments directly without intermediate variables
+            test_outputs = torch.stack([
+                torch.zeros_like(test_outputs[:, 0]),
+                -test_outputs[:, 0],
+                -test_outputs[:, 1]
+            ], dim=1)
+        else:
+            # Modify input for each action and perform a forward pass
+            input_tests = [
+                torch.cat((test_input, torch.full_like(A_tensor, i).unsqueeze(-1)), dim=1).to(params['device'])
+                for i in range(1, 4)  # Assuming there are 3 actions
+            ]
+
+            # Forward pass for each modified input and stack the results
+            test_outputs = torch.stack([
+                nn(input_stage)[0] for input_stage in input_tests
+            ], dim=1)
 
     # Determine the optimal action based on the computed outputs
     optimal_actions = torch.argmax(test_outputs, dim=1) + 1
     return optimal_actions.squeeze().to(params['device']), test_outputs
-
-
+    
 def prepare_stage2_test_input(O1_tensor_test, A1, g1_opt_conditions, Z1_tensor_test):
 
     # g1_opt_conditions gives the optimal action, we use it to compute Y1_pred
@@ -782,8 +979,12 @@ def initialize_and_load_model(stage, sample_size, params):
     nn_model = initialize_nn(params, stage).to(params['device'])
     
     # Define the directory and file name for the model
-    model_dir = 'models'
-    model_filename = f'best_model_stage_surr_{stage}_{sample_size}.pt'
+    model_dir = f"models/{params['job_id']}"
+    if params['f_model']=="surr_opt":
+        model_filename = f'best_model_stage_surr_{stage}_{sample_size}.pt'
+    else:
+        model_filename = f'best_model_stage_Q_{stage}_{sample_size}.pt'
+        
     model_path = os.path.join(model_dir, model_filename)
     
     # Set up logging
