@@ -82,42 +82,6 @@ def generate_and_preprocess_data(params, replication_seed, run='train'):
 
 
 
-
-# def surr_opt(tuple_train, tuple_val, params):
-    
-#     sample_size = params['sample_size'] 
-#     best_val_loss, best_model_stage1_params, best_model_stage2_params = float('inf'), None, None
-
-#     nn_stage1 = initialize_and_prepare_model(1, params, sample_size)
-#     nn_stage2 = initialize_and_prepare_model(2, params, sample_size)
-
-#     optimizer, scheduler = initialize_optimizer_and_scheduler(nn_stage1, nn_stage2, params)
-
-#     #  Training and Validation data
-#     train_data = {'input1': tuple_train[0], 'input2': tuple_train[1], 'Ci': tuple_train[2], 'A1': tuple_train[5], 'A2': tuple_train[6]}
-#     val_data = {'input1': tuple_val[0], 'input2': tuple_val[1], 'Ci': tuple_val[2], 'A1': tuple_val[5], 'A2': tuple_val[6]}
-
-
-#     # Training and Validation loop for both stages
-#     for epoch in range(params['n_epoch']):
-
-#         train_loss = process_batches(nn_stage1, nn_stage2, train_data, params, optimizer, is_train=True)
-#         val_loss = process_batches(nn_stage1, nn_stage2, val_data, params, optimizer, is_train=False)
-
-#         if val_loss < best_val_loss:
-#             best_val_loss = val_loss
-#             best_model_stage1_params = nn_stage1.state_dict()
-#             best_model_stage2_params = nn_stage2.state_dict()
-
-#         # Update the scheduler with the current epoch's validation loss
-#         update_scheduler(scheduler, params, val_loss)
-
-#     # Save the best model parameters for Stage 1 and Stage 2 during validation
-#     torch.save(best_model_stage1_params, f'best_model_stage_surr_1_{sample_size}.pt')
-#     torch.save(best_model_stage2_params, f'best_model_stage_surr_2_{sample_size}.pt')
-#     return (nn_stage1, nn_stage2)
-
-
 def surr_opt(tuple_train, tuple_val, params):
     
     sample_size = params['sample_size'] 
@@ -152,10 +116,6 @@ def surr_opt(tuple_train, tuple_val, params):
 
         # Update the scheduler with the current epoch's validation loss
         update_scheduler(scheduler, params, val_loss)
-
-    # # Save the best model parameters for Stage 1 and Stage 2 during validation
-    # torch.save(best_model_stage1_params, f'best_model_stage_surr_1_{sample_size}.pt')
-    # torch.save(best_model_stage2_params, f'best_model_stage_surr_2_{sample_size}.pt')
 
     model_dir = 'models'
     # Check if the directory exists, if not, create it
@@ -249,9 +209,6 @@ def simulations(num_replications, V_replications, params):
     return V_replications, df, losses_dict, epoch_num_model_lst
 
 
-
-
-
 def run_training(config, config_updates, V_replications, replication_seed):
     torch.manual_seed(replication_seed)
     local_config = {**config, **config_updates}  # Create a local config that includes both global settings and updates
@@ -261,11 +218,6 @@ def run_training(config, config_updates, V_replications, replication_seed):
     accuracy_df = calculate_accuracies(df, V_replications)
     return accuracy_df, df, losses_dict, epoch_num_model_lst
     
-
-    
-    
-   
-
 
 def main():
     # Load configuration and set up the device

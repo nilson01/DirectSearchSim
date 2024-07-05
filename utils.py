@@ -772,12 +772,6 @@ def calculate_policy_values(Y1_tensor, Y2_tensor, d1_star, d2_star, Y1_pred, Y2_
     return V_replications
 
 
-# def initialize_and_load_model(stage, sample_size, params):
-#     nn_model = initialize_nn(params, stage).to(params['device'])
-#     model_path = f'best_model_stage_surr_{stage}_{sample_size}.pt'
-#     nn_model.load_state_dict(torch.load(model_path, map_location=params['device']))
-#     nn_model.eval()  # Set the model to evaluation mode
-#     return nn_model
 
 def initialize_and_load_model(stage, sample_size, params):
     # Initialize the neural network model
