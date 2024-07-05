@@ -1,103 +1,56 @@
-Training size: 7500
-Replications_M1:   0%|          | 0/3 [00:00<?, ?it/s]
+2024-07-05 04:28:36,196 Training size: 7500
+Replication # -------------->>>>>  1
+Replication # -------------->>>>>  1
+Replication # -------------->>>>>  1
 Replication # -------------->>>>>  1
 Training started!
-Evaluation started
-Y1_pred mean: 4.068078517913818, Y2_pred mean:  3.327294111251831, Y1_pred+Y2_pred mean: 7.39537239074707 
-
-Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
-
-
-Replication # -------------->>>>>  2
+Training started!
+Training started!
 Training started!
 Evaluation started
-Y1_pred mean: 4.051555156707764, Y2_pred mean:  3.373358964920044, Y1_pred+Y2_pred mean: 7.4249138832092285 
 
-Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
-
-
-Replication # -------------->>>>>  3
-Training started!
-Evaluation started
-Y1_pred mean: 4.1955084800720215, Y2_pred mean:  3.430955410003662, Y1_pred+Y2_pred mean: 7.626463890075684 
-
-Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
-
-
-Replications_M1:   0%|          | 0/3 [00:00<?, ?it/s]
-Replication # -------------->>>>>  1
-Training started!
-Evaluation started
-Y1_pred mean: 3.861316204071045, Y2_pred mean:  3.4088475704193115, Y1_pred+Y2_pred mean: 7.2701640129089355 
-
-Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
-
-
-Replication # -------------->>>>>  2
-Training started!
-Evaluation started
-Y1_pred mean: 4.062943458557129, Y2_pred mean:  3.3646624088287354, Y1_pred+Y2_pred mean: 7.427605628967285 
-
-Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
-
-
-Replication # -------------->>>>>  3
-Training started!
-Evaluation started
-Y1_pred mean: 4.155937671661377, Y2_pred mean:  3.2903711795806885, Y1_pred+Y2_pred mean: 7.446308135986328 
-
-Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
-
-
-Performances for configuration: {"activation_function": "ELU", "batch_size": 1024, "learning_rate": 0.007, "num_layers": 4}
-   Accuracy_A1  Accuracy_A2  Behavioral Value fn.  Method's Value fn.  Optimal Value fn.
-0     0.875267     0.943800              3.675843            7.395372            8.00711
-1     0.847867     0.956867              3.679152            7.424914            8.00711
-2     0.911200     0.972133              3.702252            7.626464            8.00711
-0     0.755933     0.966933              3.683099            7.270164            8.00711
-1     0.859133     0.954400              3.699229            7.427606            8.00711
-2     0.883600     0.933200              3.675410            7.446308            8.00711
-
-
-
-Replications_M1:   0%|          | 0/3 [00:00<?, ?it/s]
-Replication # -------------->>>>>  1
-Training started!
-Evaluation started
 Y1_pred mean: 4.056110858917236, Y2_pred mean:  3.329408645629883, Y1_pred+Y2_pred mean: 7.385518550872803 
 
+
 Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
 
 
 Replication # -------------->>>>>  2
 Training started!
 Evaluation started
-Y1_pred mean: 4.102447986602783, Y2_pred mean:  3.376770496368408, Y1_pred+Y2_pred mean: 7.479217529296875 
 
-Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
-
-
-Replication # -------------->>>>>  3
-Training started!
-Evaluation started
-Y1_pred mean: 3.8868212699890137, Y2_pred mean:  3.430040121078491, Y1_pred+Y2_pred mean: 7.316862106323242 
-
-Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
-
-
-Replications_M1:   0%|          | 0/3 [00:00<?, ?it/s]
-Replication # -------------->>>>>  1
-Training started!
-Evaluation started
 Y1_pred mean: 3.947299003601074, Y2_pred mean:  3.3769655227661133, Y1_pred+Y2_pred mean: 7.324265003204346 
 
+
 Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
 
 
 Replication # -------------->>>>>  2
 Training started!
 Evaluation started
-Y1_pred mean: 4.10608434677124, Y2_pred mean:  3.4346773624420166, Y1_pred+Y2_pred mean: 7.540761470794678 
+Evaluation started
+
+Y1_pred mean: 3.8491194248199463, Y2_pred mean:  3.4003865718841553, Y1_pred+Y2_pred mean: 7.24950647354126 
+
+
+Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
+
+
+Replication # -------------->>>>>  2
+
+Y1_pred mean: 3.861316204071045, Y2_pred mean:  3.4088475704193115, Y1_pred+Y2_pred mean: 7.2701640129089355 
+
+
+Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
+
+
+Replication # -------------->>>>>  2
+Training started!
+Training started!
+Evaluation started
+
+Y1_pred mean: 4.102447986602783, Y2_pred mean:  3.376770496368408, Y1_pred+Y2_pred mean: 7.479217529296875 
+
 
 Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
 
@@ -105,52 +58,119 @@ Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt me
 Replication # -------------->>>>>  3
 Training started!
 Evaluation started
-Y1_pred mean: 4.145402431488037, Y2_pred mean:  3.4032068252563477, Y1_pred+Y2_pred mean: 7.548609256744385 
+
+Y1_pred mean: 4.10608434677124, Y2_pred mean:  3.4346773624420166, Y1_pred+Y2_pred mean: 7.540761470794678 
+
 
 Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
 
 
-Performances for configuration: {"activation_function": "ELU", "batch_size": 3072, "learning_rate": 0.007, "num_layers": 4}
-   Accuracy_A1  Accuracy_A2  Behavioral Value fn.  Method's Value fn.  Optimal Value fn.
-0     0.867333     0.944400              3.696498            7.385519            8.00711
-1     0.855733     0.956867              3.675837            7.479218            8.00711
-2     0.812267     0.972933              3.681862            7.316862            8.00711
-0     0.790800     0.954200              3.684470            7.324265            8.00711
-1     0.869600     0.974133              3.687572            7.540761            8.00711
-2     0.876200     0.965333              3.668324            7.548609            8.00711
+Replication # -------------->>>>>  3
+Training started!
+Evaluation started
+
+Y1_pred mean: 3.8868212699890137, Y2_pred mean:  3.430040121078491, Y1_pred+Y2_pred mean: 7.316862106323242 
 
 
-
-Data saved successfully in the folder: data
-
-Unique values:
-Predicted: {'Predicted_A1': array([1, 2, 3]), 'Predicted_A2': array([1, 2, 3])}
-Optimal: {'Optimal_A1': array([1., 2., 3.]), 'Optimal_A2': array([1., 3.])}
-
-TrainVval Plot saved as: data/Simulation run trainVval_0.png
-TrainVval Plot saved as: data/Simulation run trainVval_1.png
-TrainVval Plot saved as: data/Simulation run trainVval_2.png
-TrainVval Plot saved as: data/Simulation run trainVval_3.png
-plot_epoch_frequency Plot saved as: data/Simulation run epoch_num_0.png
-plot_epoch_frequency Plot saved as: data/Simulation run epoch_num_1.png
-plot_epoch_frequency Plot saved as: data/Simulation run epoch_num_2.png
-plot_epoch_frequency Plot saved as: data/Simulation run epoch_num_3.png
+Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
 
 
+2024-07-05 04:29:08,783 Configuration {'activation_function': 'ELU', 'batch_size': 3072, 'learning_rate': 0.007, 'num_layers': 4}, replication 0 completed successfully.
+Evaluation started
 
-Configuration: {"activation_function": "ELU", "batch_size": 1024, "learning_rate": 0.007, "num_layers": 4} 
-Average Performance:
-  Accuracy_A1             0.855500
-Accuracy_A2             0.954556
-Behavioral Value fn.    3.685831
-Method's Value fn.      7.431805
-Optimal Value fn.       8.007110 
+Y1_pred mean: 4.145402431488037, Y2_pred mean:  3.4032068252563477, Y1_pred+Y2_pred mean: 7.548609256744385 
 
-Configuration: {"activation_function": "ELU", "batch_size": 3072, "learning_rate": 0.007, "num_layers": 4} 
-Average Performance:
-  Accuracy_A1             0.845322
+
+Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
+
+
+2024-07-05 04:29:08,872 Configuration {'activation_function': 'ELU', 'batch_size': 3072, 'learning_rate': 0.007, 'num_layers': 4}, replication 1 completed successfully.
+Evaluation started
+Evaluation started
+
+Y1_pred mean: 4.051555156707764, Y2_pred mean:  3.373358964920044, Y1_pred+Y2_pred mean: 7.4249138832092285 
+
+
+Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
+
+
+Replication # -------------->>>>>  3
+Training started!
+
+Y1_pred mean: 4.062943458557129, Y2_pred mean:  3.3646624088287354, Y1_pred+Y2_pred mean: 7.427605628967285 
+
+
+Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
+
+
+Replication # -------------->>>>>  3
+Training started!
+Evaluation started
+
+Y1_pred mean: 4.1955084800720215, Y2_pred mean:  3.430955410003662, Y1_pred+Y2_pred mean: 7.626463890075684 
+
+
+Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
+
+
+Evaluation started
+
+Y1_pred mean: 4.155937671661377, Y2_pred mean:  3.2903711795806885, Y1_pred+Y2_pred mean: 7.446308135986328 
+
+
+Y1_opt mean: 4.481688976287842, Y2_opt mean: 3.525421142578125, Y1_opt+Y2_opt mean: 8.007109642028809 
+
+
+2024-07-05 04:29:23,646 Configuration {'activation_function': 'ELU', 'batch_size': 1024, 'learning_rate': 0.007, 'num_layers': 4}, replication 0 completed successfully.
+2024-07-05 04:29:23,668 Configuration {'activation_function': 'ELU', 'batch_size': 1024, 'learning_rate': 0.007, 'num_layers': 4}, replication 1 completed successfully.
+2024-07-05 04:29:23,671 
+Performances for configuration: 
+{"activation_function": "ELU", "batch_size": 3072, "learning_rate": 0.007, "num_layers": 4}
+2024-07-05 04:29:23,672 
+Accuracy_A1             0.845322
 Accuracy_A2             0.961311
 Behavioral Value fn.    3.682427
 Method's Value fn.      7.432539
-Optimal Value fn.       8.007110 
+Optimal Value fn.       8.007110
+2024-07-05 04:29:23,672 
+Performances for configuration: 
+{"activation_function": "ELU", "batch_size": 1024, "learning_rate": 0.007, "num_layers": 4}
+2024-07-05 04:29:23,672 
+Accuracy_A1             0.835300
+Accuracy_A2             0.958011
+Behavioral Value fn.    3.685831
+Method's Value fn.      7.407494
+Optimal Value fn.       8.007110
+2024-07-05 04:29:24,450 Data saved successfully in the folder: data
+2024-07-05 04:29:24,549 
+Unique values:
+key1: value1
+key2: value2
+
+2024-07-05 04:29:25,320 TrainVval Plot saved as: data/Simulation run trainVval_0.png
+2024-07-05 04:29:25,800 TrainVval Plot saved as: data/Simulation run trainVval_1.png
+2024-07-05 04:29:26,444 TrainVval Plot saved as: data/Simulation run trainVval_2.png
+2024-07-05 04:29:26,997 TrainVval Plot saved as: data/Simulation run trainVval_3.png
+2024-07-05 04:29:27,108 plot_epoch_frequency Plot saved as: data/Simulation run epoch_num_0.png
+2024-07-05 04:29:27,227 plot_epoch_frequency Plot saved as: data/Simulation run epoch_num_1.png
+2024-07-05 04:29:27,318 plot_epoch_frequency Plot saved as: data/Simulation run epoch_num_2.png
+2024-07-05 04:29:27,407 plot_epoch_frequency Plot saved as: data/Simulation run epoch_num_3.png
+2024-07-05 04:29:27,407 
+
+
+2024-07-05 04:29:27,408 Configuration: {"activation_function": "ELU", "batch_size": 3072, "learning_rate": 0.007, "num_layers": 4}
+Average Performance:
+ Accuracy_A1             0.845322
+Accuracy_A2             0.961311
+Behavioral Value fn.    3.682427
+Method's Value fn.      7.432539
+Optimal Value fn.       8.007110
+
+2024-07-05 04:29:27,408 Configuration: {"activation_function": "ELU", "batch_size": 1024, "learning_rate": 0.007, "num_layers": 4}
+Average Performance:
+ Accuracy_A1             0.835300
+Accuracy_A2             0.958011
+Behavioral Value fn.    3.685831
+Method's Value fn.      7.407494
+Optimal Value fn.       8.007110
 

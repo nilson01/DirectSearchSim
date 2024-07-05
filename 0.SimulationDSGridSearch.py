@@ -1,8 +1,30 @@
 import sys
+from tqdm import tqdm
+from tqdm.notebook import tqdm
+import logging
 import json
 from itertools import product
 from utils import *
+import concurrent.futures
+from concurrent.futures import ProcessPoolExecutor
+import multiprocessing
 
+
+
+class FlushFile:
+    """File-like wrapper that flushes on every write."""
+    def __init__(self, f):
+        self.f = f
+
+    def write(self, x):
+        self.f.write(x)
+        self.f.flush()  # Flush output after write
+
+    def flush(self):
+        self.f.flush()
+        
+
+        
 # Generate Data
 def generate_and_preprocess_data(params, replication_seed, run='train'):
 
@@ -169,9 +191,8 @@ def eval_DTR(V_replications, num_replications, nn_stage1, nn_stage2, df, params)
     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
 
-    message = f'Y1_pred mean: {torch.mean(Y1_pred)}, Y2_pred mean:  {torch.mean(Y2_pred)}, Y1_pred+Y2_pred mean: {torch.mean(Y1_pred + Y2_pred)} \n'
-    tqdm.write(message)
-
+    message = f'\nY1_pred mean: {torch.mean(Y1_pred)}, Y2_pred mean:  {torch.mean(Y2_pred)}, Y1_pred+Y2_pred mean: {torch.mean(Y1_pred + Y2_pred)} \n'
+    logging.info(message)
 
     V_replications = calculate_policy_values(Y1_tensor=Y1_tensor, Y2_tensor=Y2_tensor, 
                                              d1_star=d1_star, d2_star=d2_star, 
@@ -183,6 +204,7 @@ def eval_DTR(V_replications, num_replications, nn_stage1, nn_stage2, df, params)
 
 
 
+
 def simulations(num_replications, V_replications, params):
     columns = ['Behavioral_A1', 'Behavioral_A2', 'Predicted_A1', 'Predicted_A2', 'Optimal_A1', 'Optimal_A2']
     df = pd.DataFrame(columns=columns)
@@ -190,23 +212,23 @@ def simulations(num_replications, V_replications, params):
     epoch_num_model_lst = []
 
     for replication in tqdm(range(num_replications), desc="Replications_M1"):
-
-        tqdm.write(f"Replication # -------------->>>>>  {replication+1}")
+        logging.info(f"Replication # -------------->>>>>  {replication+1}")
 
         # Generate and preprocess data for training
         tuple_train, tuple_val = generate_and_preprocess_data(params, replication_seed=replication, run='train')
 
-        #  Estimate treatment regime : model --> surr_opt
-        tqdm.write("Training started!")
+        # Estimate treatment regime : model --> surr_opt
+        logging.info("Training started!")
         nn_stage1, nn_stage2, trn_val_loss_tpl, epoch_num_model = surr_opt(tuple_train, tuple_val, params)
         epoch_num_model_lst.append(epoch_num_model)
         losses_dict[replication] = trn_val_loss_tpl
         
         # eval_DTR
-        tqdm.write("Evaluation started")
-        V_replications, df = eval_DTR(V_replications, replication, nn_stage1, nn_stage2, df, params )
+        logging.info("Evaluation started")
+        V_replications, df = eval_DTR(V_replications, replication, nn_stage1, nn_stage2, df, params)
         
     return V_replications, df, losses_dict, epoch_num_model_lst
+
 
 
 def run_training(config, config_updates, V_replications, replication_seed):
@@ -219,7 +241,165 @@ def run_training(config, config_updates, V_replications, replication_seed):
     return accuracy_df, df, losses_dict, epoch_num_model_lst
     
 
+        
+        
+
+
+# # Sequential version    
+# def run_grid_search(config, param_grid):
+#     # Initialize for storing results and performance metrics
+#     results = {}
+#     all_dfs = pd.DataFrame()  # DataFrames from each run
+#     all_losses_dicts = []  # Losses from each run
+#     all_epoch_num_lists = []  # Epoch numbers from each run 
+#     grid_replications = 2
+
+#     for params in product(*param_grid.values()):
+#         current_config = dict(zip(param_grid.keys(), params))
+#         performances = pd.DataFrame()
+
+#         for i in range(grid_replications): 
+#             V_replications = {
+#                 "V_replications_M1_pred": [],
+#                 "V_replications_M1_behavioral": [],
+#                 "V_replications_M1_optimal": []
+#             }
+#             performance, df, losses_dict, epoch_num_model_lst = run_training(config, current_config, V_replications, replication_seed=i)
+#             performances = pd.concat([performances, performance], axis=0)
+#             all_dfs = pd.concat([all_dfs, df], axis=0)
+#             all_losses_dicts.append(losses_dict)
+#             all_epoch_num_lists.append(epoch_num_model_lst)
+
+#         # Store and log average performance across replications for each configuration
+#         config_key = json.dumps(current_config, sort_keys=True)
+#         results[config_key] = performances.mean()
+#         logging.info("Performances for configuration: %s", config_key)
+#         logging.info("%s", performances)
+#         logging.info("\n\n")
+
+#     save_simulation_data(all_dfs, all_losses_dicts, all_epoch_num_lists, results)
+#     load_and_process_data(config)
+    
+        
+# def main():
+#     # setup_logging
+#     logging.basicConfig(filename='output.txt', level=logging.INFO, format='%(asctime)s %(message)s')
+#     logger = logging.getLogger(__name__) 
+#     sys.stdout = FlushFile(sys.stdout)
+
+
+#     # Load configuration and set up the device
+#     config = load_config()
+#     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+#     config['device'] = device
+
+#     training_validation_prop = config['training_validation_prop']
+#     train_size = int(training_validation_prop * config['sample_size'])
+#     logging.info("\nTraining size: %d", train_size)
+    
+#     # Define parameter grid for grid search
+#     # param_grid = {
+#     #     'activation_function': ['RELU', 'ELU'],
+#     #     'batch_size': [64, 128, 256, 384],
+#     #     'learning_rate': [0.0007, 0.007, 0.07],
+#     #     'num_layers': [4, 5, 6, 7]
+#     # }    
+
+#     param_grid = {
+#         'activation_function': ['ELU'],
+#         'batch_size': [1024, 3072],
+#         'learning_rate': [0.007],
+#         'num_layers': [4]
+#     }
+#     # Perform operations whose output should go to the file
+#     run_grid_search(config, param_grid)
+
+
+# if __name__ == '__main__':
+#     main()
+    
+
+
+
+
+
+
+
+        
+        
+        
+        
+# parallelized version
+    
+def run_training_with_params(params):
+    logging.basicConfig(filename='output.txt', level=logging.INFO, format='%(message)s')
+    logger = logging.getLogger(__name__) 
+
+    config, current_config, V_replications, i = params
+    return run_training(config, current_config, V_replications, replication_seed=i)
+ 
+
+def run_grid_search(config, param_grid):
+    # Initialize for storing results and performance metrics
+    results = {}
+    all_dfs = pd.DataFrame()  # DataFrames from each run
+    all_losses_dicts = []  # Losses from each run
+    all_epoch_num_lists = []  # Epoch numbers from each run 
+    grid_replications = 2
+
+    # Collect all parameter combinations
+    param_combinations = [dict(zip(param_grid.keys(), param)) for param in product(*param_grid.values())]
+
+    with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
+        future_to_params = {}
+        for current_config in param_combinations:
+            for i in range(grid_replications): 
+                V_replications = {
+                    "V_replications_M1_pred": [],
+                    "V_replications_M1_behavioral": [],
+                    "V_replications_M1_optimal": []
+                }
+                params = (config, current_config, V_replications, i)
+                future = executor.submit(run_training_with_params, params)
+                future_to_params[future] = (current_config, i)
+
+        for future in concurrent.futures.as_completed(future_to_params):
+            current_config, i = future_to_params[future]
+            try:
+                performance, df, losses_dict, epoch_num_model_lst = future.result()
+                logging.info(f'Configuration {current_config}, replication {i} completed successfully.')
+                
+                performances = pd.DataFrame()
+                performances = pd.concat([performances, performance], axis=0)
+                all_dfs = pd.concat([all_dfs, df], axis=0)
+                all_losses_dicts.append(losses_dict)
+                all_epoch_num_lists.append(epoch_num_model_lst)
+                
+                # Store and print average performance across replications for each configuration
+                config_key = json.dumps(current_config, sort_keys=True)
+                if config_key not in results:
+                    results[config_key] = performances.mean()
+                else:
+                    results[config_key] += performances.mean()
+            except Exception as exc:
+                logging.error(f'Generated an exception for config {current_config}, replication {i}: {exc}')
+
+        # Average the performances over the number of replications
+        for key in results:
+            results[key] /= grid_replications
+            logging.info('\n\n')
+            logging.info(f'\nPerformances for configuration: \n{key}')
+            logging.info(f'\n{results[key].to_string()}')
+
+    save_simulation_data(all_dfs, all_losses_dicts, all_epoch_num_lists, results)
+    load_and_process_data(config)
+
 def main():
+    
+    # setup_logging
+    logging.basicConfig(filename='output.txt', level=logging.INFO, format='%(asctime)s %(message)s')
+    logger = logging.getLogger(__name__) 
+
     # Load configuration and set up the device
     config = load_config()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -227,16 +407,10 @@ def main():
 
     training_validation_prop = config['training_validation_prop']
     train_size = int(training_validation_prop * config['sample_size'])
-    print("Training size:", train_size)
+    logging.info("Training size: %d", train_size)
+
 
     # Define parameter grid for grid search
-    # param_grid = {
-    #     'activation_function': ['RELU', 'ELU'],
-    #     'batch_size': [64, 128, 256, 384],
-    #     'learning_rate': [0.0007, 0.007, 0.07],
-    #     'num_layers': [4, 5, 6, 7]
-    # }    
-
     param_grid = {
         'activation_function': ['ELU'],
         'batch_size': [1024, 3072],
@@ -245,71 +419,25 @@ def main():
     }
     # Perform operations whose output should go to the file
     run_grid_search(config, param_grid)
-
-
-def run_grid_search(config, param_grid):
     
-    # Initialize for storing results and performance metrics
-    results = {}
-    all_dfs = pd.DataFrame()  # DataFrames from each run
-    all_losses_dicts = []  # Losses from each run
-    all_epoch_num_lists = []  # Epoch numbers from each run
 
-    for params in product(*param_grid.values()):
-        current_config = dict(zip(param_grid.keys(), params))
-        performances = pd.DataFrame()
-
-        for i in range(2):  # Assume 2 replications
-            V_replications = {
-                "V_replications_M1_pred": [],
-                "V_replications_M1_behavioral": [],
-                "V_replications_M1_optimal": []
-            }
-            performance, df, losses_dict, epoch_num_model_lst = run_training(config, current_config, V_replications, replication_seed=i)
-            performances = pd.concat([performances, performance], axis=0)
-            all_dfs = pd.concat([all_dfs, df], axis=0)
-            all_losses_dicts.append(losses_dict)
-            all_epoch_num_lists.append(epoch_num_model_lst)
-
-        # Store and print average performance across replications for each configuration
-        # Convert the configuration dictionary to a hashable json # config_key = tuple(sorted(current_config.items()))
-        config_key = json.dumps(current_config, sort_keys=True)
-        results[config_key] = performances.mean()
-        print("Performances for configuration:", config_key)
-        print(performances)
-        print("\n\n")
-
-    save_simulation_data(all_dfs, all_losses_dicts, all_epoch_num_lists, results)
-    load_and_process_data(config)
-
-class FlushFile:
-    """File-like wrapper that flushes on every write."""
-    def __init__(self, f):
-        self.f = f
-
-    def write(self, x):
-        self.f.write(x)
-        self.f.flush()  # Flush output after write
-
-    def flush(self):
-        self.f.flush()
-        
 if __name__ == '__main__':
-    # Setup to write output to a file instead of the console
-    original_stdout = sys.stdout  
-    with open('output.txt', 'w') as f:
-        sys.stdout = FlushFile(f)   # Replace stdout with an instance that flushes on every write to the file we created.
-        main()  
-    sys.stdout = original_stdout  
-
-
-
-# if __name__ == '__main__':
-#     main()
+    multiprocessing.set_start_method('spawn', force=True)
+    main()
+    
 
 
 
 
+
+
+
+
+
+
+    
+    
+    
 
 
 
@@ -391,3 +519,66 @@ if __name__ == '__main__':
 # selected_indices = [i for i in range(num_replications)]
 # plot_simulation_surLoss_losses_in_grid(selected_indices, losses_dict, n_epoch)
 
+
+
+
+
+
+
+# def main():
+#     # Load configuration and set up the device, etc.
+#     config = load_config()
+#     config['device'] = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+#     param_grid = {
+#         'activation_function': ['ELU'],
+#         'batch_size': [1024, 3072],
+#         'learning_rate': [0.007],
+#         'num_layers': [4]
+#     }
+    
+#     # Flatten the param_grid into a list of dictionaries
+#     param_list = [dict(zip(param_grid, x)) for x in product(*param_grid.values())]
+
+#     # Use ProcessPoolExecutor to parallelize the grid search
+#     results = []
+#     with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
+#         future_to_params = {executor.submit(run_single_grid_search, config, params): params for params in param_list}
+#         for future in concurrent.futures.as_completed(future_to_params):
+#             params = future_to_params[future]
+#             try:
+#                 result = future.result()
+#                 results.append(result)
+#                 print(f'Results for parameters {params}: {result}')
+#             except Exception as exc:
+#                 print(f'{params} generated an exception: {exc}')
+
+#     # Assuming you have some method to handle results aggregation
+#     process_results(results)
+
+
+
+    
+# def run_single_grid_search(config, params):
+#     current_config = dict(zip(config['param_keys'], params))
+#     performances = pd.DataFrame()
+
+#     V_replications = {
+#         "V_replications_M1_pred": [],
+#         "V_replications_M1_behavioral": [],
+#         "V_replications_M1_optimal": []
+#     }
+#     for i in range(config['grid_replications']):
+#         performance, df, losses_dict, epoch_num_model_lst = run_training(config, current_config, V_replications, replication_seed=i)
+#         performances = pd.concat([performances, performance], axis=0)
+
+#     # Store results
+#     config_key = json.dumps(current_config, sort_keys=True)
+#     results = {
+#         'config_key': config_key,
+#         'performances': performances.mean().to_dict(),
+#         'df': df,
+#         'losses_dict': losses_dict,
+#         'epoch_num_model_lst': epoch_num_model_lst
+#     }
+#     return results
