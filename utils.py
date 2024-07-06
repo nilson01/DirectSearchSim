@@ -1,4 +1,5 @@
 import os
+import json
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -48,6 +49,7 @@ def extract_unique_treatment_values(df, columns_to_process):
     unique_values = {"key1": "value1", "key2": "value2"}  # Example dictionary
     log_message = "\nUnique values:\n" + "\n".join(f"{k}: {v}" for k, v in unique_values.items()) + "\n"
     logger.info(log_message)
+    logger.info(f"\nUnique_values:  {unique_values} ")
 
     return unique_values
 
@@ -80,6 +82,31 @@ def save_simulation_data(global_df, all_losses_dicts, all_epoch_num_lists, resul
     logger.info("Data saved successfully in the folder: %s", folder)
 
 
+def save_results_to_dataframe(results, folder):
+    data = {
+        "Configuration": [],
+        "Accuracy_A1": [],
+        "Accuracy_A2": [],
+        "Behavioral Value fn.": [],
+        "Method's Value fn.": [],
+        "Optimal Value fn.": []
+    }
+
+    for config_key, performance in results.items():
+        data["Configuration"].append(config_key)
+        data["Accuracy_A1"].append(performance.get("Accuracy_A1", None))
+        data["Accuracy_A2"].append(performance.get("Accuracy_A2", None))
+        data["Behavioral Value fn."].append(performance.get("Behavioral Value fn.", None))
+        data["Method's Value fn."].append(performance.get("Method's Value fn.", None))
+        data["Optimal Value fn."].append(performance.get("Optimal Value fn.", None))
+
+    df = pd.DataFrame(data)
+    
+    # Sort the DataFrame by 'Behavioral Value fn.' in descending order
+    df = df.sort_values(by="Behavioral Value fn.", ascending=False)
+    
+    df.to_csv(f'{folder}/configurations_performance.csv', index=False)
+    return df
 
     
 def load_and_process_data(params, folder):
@@ -131,7 +158,10 @@ def load_and_process_data(params, folder):
     logger.info("\n\n")
     for config_key, performance in results.items():
         logger.info("Configuration: %s\nAverage Performance:\n %s\n", config_key, performance.to_string(index=True, header=False))
-
+    
+    # Call the function to plot value functions
+    df = save_results_to_dataframe(results, folder)
+    plot_value_functions(results, folder)
 
 
 
@@ -183,16 +213,29 @@ def transform_Y(Y1, Y2):
 
 # Neural networks utils
 
+# def initialize_nn(params, stage):
+#     nn = NNClass(
+#         params[f'input_dim_stage{stage}'],
+#         params[f'hidden_dim_stage{stage}'],
+#         params[f'output_dim_stage{stage}'],
+#         params['num_networks'],
+#         dropout_rate=params['dropout_rate'],
+#         activation_fn_name = params['activation_function'],
+#     ).to(params['device'])
+#     return nn
+
 def initialize_nn(params, stage):
     nn = NNClass(
-        params[f'input_dim_stage{stage}'],
-        params[f'hidden_dim_stage{stage}'],
-        params[f'output_dim_stage{stage}'],
-        params['num_networks'],
+        input_dim=params[f'input_dim_stage{stage}'],
+        hidden_dim=params[f'hidden_dim_stage{stage}'],
+        output_dim=params[f'output_dim_stage{stage}'],
+        num_networks=params['num_networks'],
         dropout_rate=params['dropout_rate'],
-        activation_fn_name = params['activation_function'],
+        activation_fn_name=params['activation_function'],
+        num_hidden_layers=params['num_layers'] - 1  # num_layers is the number of hidden layers
     ).to(params['device'])
     return nn
+
 
 
 def batches(N, batch_size, seed=0):
@@ -210,12 +253,12 @@ def batches(N, batch_size, seed=0):
         batch_indices = indices[start_idx:start_idx + batch_size]
         yield batch_indices
 
-
+        
 class NNClass(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, num_networks, dropout_rate, activation_fn_name):
+    def __init__(self, input_dim, hidden_dim, output_dim, num_networks, dropout_rate, activation_fn_name, num_hidden_layers):
         super(NNClass, self).__init__()
         self.networks = nn.ModuleList()
-        
+
         # Map the string name to the actual activation function class
         if activation_fn_name.lower() == 'elu':
             activation_fn = nn.ELU
@@ -225,15 +268,22 @@ class NNClass(nn.Module):
             raise ValueError(f"Unsupported activation function: {activation_fn_name}")
 
         for _ in range(num_networks):
-            network = nn.Sequential(
-                nn.Linear(input_dim, hidden_dim),
-                activation_fn(),  # Instantiate the activation function
-                nn.Dropout(dropout_rate),
-                nn.Linear(hidden_dim, output_dim),
-                nn.BatchNorm1d(output_dim),
-            )
-            self.networks.append(network)
+            layers = []
+            layers.append(nn.Linear(input_dim, hidden_dim))
+            layers.append(activation_fn())
+            layers.append(nn.Dropout(dropout_rate))
             
+            for _ in range(num_hidden_layers):  # Adjusting the hidden layers count
+                layers.append(nn.Linear(hidden_dim, hidden_dim))
+                layers.append(activation_fn())
+                layers.append(nn.Dropout(dropout_rate))
+                
+            layers.append(nn.Linear(hidden_dim, output_dim))
+            layers.append(nn.BatchNorm1d(output_dim))
+            
+            network = nn.Sequential(*layers)
+            self.networks.append(network)
+
     def forward(self, x):
         outputs = []
         for network in self.networks:
@@ -253,6 +303,52 @@ class NNClass(nn.Module):
                 if isinstance(layer, nn.Linear):
                     nn.init.constant_(layer.weight, 0.1)
                     nn.init.constant_(layer.bias, 0.0)
+
+                    
+        
+
+# class NNClass(nn.Module):
+#     def __init__(self, input_dim, hidden_dim, output_dim, num_networks, dropout_rate, activation_fn_name):
+#         super(NNClass, self).__init__()
+#         self.networks = nn.ModuleList()
+        
+#         # Map the string name to the actual activation function class
+#         if activation_fn_name.lower() == 'elu':
+#             activation_fn = nn.ELU
+#         elif activation_fn_name.lower() == 'relu':
+#             activation_fn = nn.ReLU
+#         else:
+#             raise ValueError(f"Unsupported activation function: {activation_fn_name}")
+
+#         for _ in range(num_networks):
+#             network = nn.Sequential(
+#                 nn.Linear(input_dim, hidden_dim),
+#                 activation_fn(),  # Instantiate the activation function
+#                 nn.Dropout(dropout_rate),
+#                 nn.Linear(hidden_dim, output_dim),
+#                 nn.BatchNorm1d(output_dim),
+#             )
+#             self.networks.append(network)
+            
+#     def forward(self, x):
+#         outputs = []
+#         for network in self.networks:
+#             outputs.append(network(x))
+#         return outputs
+
+#     def he_initializer(self):
+#         for network in self.networks:
+#             for layer in network:
+#                 if isinstance(layer, nn.Linear):
+#                     nn.init.kaiming_normal_(layer.weight, mode='fan_out', nonlinearity='relu')
+#                     nn.init.constant_(layer.bias, 0)  # Biases can be initialized to zero
+
+#     def reset_weights(self):
+#         for network in self.networks:
+#             for layer in network:
+#                 if isinstance(layer, nn.Linear):
+#                     nn.init.constant_(layer.weight, 0.1)
+#                     nn.init.constant_(layer.bias, 0.0)
 
 
 
@@ -398,7 +494,42 @@ def plot_v_values(v_dict, num_replications, train_size):
     plt.legend()
     plt.show()
 
+def abbreviate_config(config):
+    abbreviations = {
+        "activation_function": "AF",
+        "batch_size": "BS",
+        "learning_rate": "LR",
+        "num_layers": "NL"
+    }
+    abbreviated_config = {abbreviations[k]: v for k, v in config.items()}
+    return str(abbreviated_config)
+    
+def plot_value_functions(results, folder):
+    data = {
+        "Configuration": [],
+        "Value Function": []
+    }
 
+    for config_key, performance in results.items():
+        config_dict = json.loads(config_key)
+        abbreviated_config = abbreviate_config(config_dict)
+        data["Configuration"].append(abbreviated_config)
+        data["Value Function"].append(performance["Method's Value fn."])
+
+    df = pd.DataFrame(data)
+    
+    # Sort the DataFrame by 'Value Function' in descending order
+    df = df.sort_values(by="Value Function", ascending=True)
+
+    plt.figure(figsize=(10, 6))
+    plt.barh(df["Configuration"], df["Value Function"], color='skyblue')
+    plt.xlabel("Value Function")
+    plt.title("Value Function of Each Method")
+    plt.yticks(rotation=0)  # Rotate configuration labels to vertical
+    plt.tight_layout()
+    plt.savefig(f'{folder}/value_function_plot.png')
+    plt.close()
+    
 
 def plot_epoch_frequency(epoch_num_model_lst, n_epoch, run_name, folder='data'):
     """

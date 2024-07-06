@@ -1,5 +1,5 @@
 # Network parameters configuration
-f_model: DQlearning  # DQlearning, surr_opt # Model function or optimization strategy
+f_model: surr_opt  # DQlearning, surr_opt # Model function or optimization strategy
 setting: tao  # Experimental setting identifier
 surrogate_num: 1  # Indicates the surrogate model configuration number
 option_sur: 4  # Specifies the operational mode or variant of the surrogate model
@@ -21,7 +21,7 @@ output_dim_stage2: 1  # Output dimension for stage 2
 hidden_dim_stage1: 20  # Number of neurons in the hidden layer of stage 1
 hidden_dim_stage2: 20  # Number of neurons in the hidden layer of stage 2
 dropout_rate: 0.4  # Dropout rate to prevent overfitting
-
+num_layers: 1
 optimizer_type: adam  # Optimizer type, can be 'adam' or 'rmsprop'
 optimizer_lr: 0.07  # Learning rate for the optimizer
 optimizer_weight_decay: 0.001  # Weight decay (L2 regularization) helps prevent overfitting
