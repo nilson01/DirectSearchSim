@@ -568,6 +568,7 @@ if __name__ == '__main__':
 #   'hidden_dim_stage2': 20, #20
 #   'dropout_rate': 0.4, #0.3, 0.43
 #   'activation_function':'relu',
+#    'num_layers': 2,
 
 #   'optimizer_type': 'adam',  # Can be 'adam' or 'rmsprop'
 #   'optimizer_lr': 0.07, # 0.07, 0.007

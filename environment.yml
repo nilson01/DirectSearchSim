@@ -1,0 +1,21 @@
+name: DirectSearchSim
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.8
+  - numpy
+  - pandas
+  - matplotlib
+  - pyyaml
+  - tqdm
+  - ipywidgets
+  - jupyter
+  - pip
+  - pip:
+      - torch
+      - torchvision
+      - pickle5
+      - scikit-learn
+      - fastprogress
+      - wandb

@@ -28,29 +28,20 @@ def load_config(file_path='config.yaml'):
     with open(file_path, 'r') as file:
         return yaml.safe_load(file)
     
-    
+
 def extract_unique_treatment_values(df, columns_to_process):
     unique_values = {}
+
     for key, cols in columns_to_process.items():
         unique_values[key] = {}
+        
         for col in cols:
-            if col in df.columns:
-                # Flatten the array or list across the entire column before extracting unique values
-                try:
-                    # Flatten the array or list using numpy.concatenate assuming the entries are numpy arrays or lists
-                    flattened_array = np.concatenate(df[col].dropna().values)
-                    # Extract unique values using numpy's unique function
-                    unique_values[key][col] = np.unique(flattened_array)
-                except Exception as e:
-                    logging.error(f"Error processing column {col}: {str(e)}")
-            else:
-                logging.warning(f"Column {col} does not exist in the DataFrame")
-    
-    unique_values = {"key1": "value1", "key2": "value2"}  # Example dictionary
+            all_values = [item for sublist in df[col] for item in sublist]
+            unique_values[key][col] = set(all_values)
+
     log_message = "\nUnique values:\n" + "\n".join(f"{k}: {v}" for k, v in unique_values.items()) + "\n"
     logger.info(log_message)
-    logger.info(f"\nUnique_values:  {unique_values} ")
-
+    
     return unique_values
 
 
