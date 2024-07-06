@@ -1,12 +1,11 @@
 
-```markdown
 # DirectSearchSim
 
 This repository contains the code for running simulations for Direct Search. Follow the instructions below to set up and run the simulations.
 
 ## Directory Structure
 
-```
+```sh
 DirectSearchSim/
 ├── __pycache__/
 ├── config.yaml
@@ -24,6 +23,15 @@ DirectSearchSim/
 ### Prerequisites
 
 Ensure you have [Miniconda](https://docs.conda.io/en/latest/miniconda.html) or [Anaconda](https://www.anaconda.com/products/distribution) installed.
+
+### Clone the Repository
+
+Clone the repository using the following command:
+
+```sh
+git clone https://github.com/nilson01/DirectSearchSim.git
+cd DirectSearchSim
+```
 
 ### Install Dependencies
 
@@ -63,17 +71,6 @@ If you don't want parallelization or want to run a simple single simulation, you
 
 Utility functions required for the simulations are available in the `utils.py` file.
 
-## Running Tests
-
-To run the tests, use:
-
-```sh
-python test.py
-```
-
-## Logging Execution Time
-
-The `SimulationDSGridSearch.py` file logs both the start and end times of the simulation, as well as the total time taken. Ensure your logging configuration is set up correctly to capture these logs.
 
 ## Example Usage
 
@@ -86,7 +83,7 @@ The `SimulationDSGridSearch.py` file logs both the start and end times of the si
    ```
 
 3. **Check the logs**:
-   Logs will provide information about the start and end times, as well as the duration of the simulation.
+   Logs will provide information in detail of the simulation.
 
 ## Contact
 
