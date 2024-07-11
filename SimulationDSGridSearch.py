@@ -2,7 +2,6 @@ import os
 import sys
 from tqdm import tqdm
 from tqdm.notebook import tqdm
-import logging
 import json
 from itertools import product
 from utils import *
@@ -10,28 +9,16 @@ import concurrent.futures
 from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
 import time
-
-
-
-class FlushFile:
-    """File-like wrapper that flushes on every write."""
-    def __init__(self, f):
-        self.f = f
-
-    def write(self, x):
-        self.f.write(x)
-        self.f.flush()  # Flush output after write
-
-    def flush(self):
-        self.f.flush()
-        
+from datetime import datetime
 
         
+
 # Generate Data
+
 def generate_and_preprocess_data(params, replication_seed, run='train'):
 
     # torch.manual_seed(replication_seed)
-    sample_size = params['sample_size'] 
+    sample_size = params['sample_size']
     device = params['device']
 
     # Simulate baseline covariates
@@ -44,6 +31,10 @@ def generate_and_preprocess_data(params, replication_seed, run='train'):
         Z2.fill_(0)
 
     # Stage 1 data simulation
+        
+    # Input preparation
+    input_stage1 = O1.t()
+    
     x1, x2, x3, x4, x5 = O1[0], O1[1], O1[2], O1[3], O1[4]
     pi_10 = torch.ones(sample_size, device=device)
     pi_11 = torch.exp(0.5 - 0.5 * x3)
@@ -51,20 +42,39 @@ def generate_and_preprocess_data(params, replication_seed, run='train'):
     matrix_pi1 = torch.stack((pi_10, pi_11, pi_12), dim=0).t()
 
     result1 = A_sim(matrix_pi1, stage=1)
-    A1, probs1 = result1['A'], result1['probs']
+    
+    if  params['use_m_propen']:
+        A1, _ = result1['A'], result1['probs']
+#         probs1 = M_propen(A1, O1[[2, 3]].t(), stage=1)  # multinomial logistic regression with X3, X4
+        probs1 = M_propen(A1, input_stage1, stage=1)  # multinomial logistic regression with H1
+    else:         
+        A1, probs1 = result1['A'], result1['probs']
+
     A1 += 1
 
     g1_opt = ((x1 > -1).float() * ((x2 > -0.5).float() + (x2 > 0.5).float())) + 1
     Y1 = torch.exp(1.5 - torch.abs(1.5 * x1 + 2) * (A1 - g1_opt).pow(2)) + Z1
+    
+    
+    # Input preparation
+    input_stage2 = torch.cat([O1.t(), A1.unsqueeze(1), Y1.unsqueeze(1)], dim=1)
 
     # Stage 2 data simulation
     pi_20 = torch.ones(sample_size, device=device)
     pi_21 = torch.exp(0.2 * Y1 - 1)
     pi_22 = torch.exp(0.5 * x4)
     matrix_pi2 = torch.stack((pi_20, pi_21, pi_22), dim=0).t()
-
+    
     result2 = A_sim(matrix_pi2, stage=2)
-    A2, probs2 = result2['A'], result2['probs']
+    
+    
+    if  params['use_m_propen']:
+        A2, _ = result2['A'], result2['probs']
+#         probs2 = M_propen(A2, O1[[0, 4]].t(), stage=2)  # multinomial logistic regression with X1, X5
+        probs2 = M_propen(A2, input_stage2, stage=2)  # multinomial logistic regression with H2
+    else:         
+        A2, probs2 = result2['A'], result2['probs']
+        
     A2 += 1
 
     Y1_opt = torch.exp(torch.tensor(1.5, device=device)) + Z1
@@ -73,7 +83,7 @@ def generate_and_preprocess_data(params, replication_seed, run='train'):
     Y2 = torch.exp(1.26 - torch.abs(1.5 * x3 - 2) * (A2 - g2_opt).pow(2)) + Z2
 
     if run != 'test':
-      # transform Y for direct search 
+      # transform Y for direct search
       Y1, Y2 = transform_Y(Y1, Y2)
 
     # Propensity score stack
@@ -89,10 +99,6 @@ def generate_and_preprocess_data(params, replication_seed, run='train'):
 
     # Calculate Ci tensor
     Ci = (Y1 + Y2) / (P_A1_given_H1_tensor * P_A2_given_H2_tensor)
-
-    # Input preparation
-    input_stage1 = O1.t()
-    input_stage2 = torch.cat([O1.t(), A1.unsqueeze(1), Y1.unsqueeze(1)], dim=1)
 
     if run == 'test':
         return input_stage1, input_stage2, Ci, Y1, Y2, A1, A2, P_A1_given_H1_tensor, P_A2_given_H2_tensor, g1_opt, g2_opt, Z1, Z2
@@ -168,14 +174,13 @@ def DQlearning(tuple_train, tuple_val, params):
 
     train_losses_stage2, val_losses_stage2, epoch_num_model_2 = train_and_validate(nn_stage2, optimizer_2, scheduler_2, train_input_stage2, train_A2, train_Y2, 
                                                                                    val_input_stage2, val_A2, val_Y2, params, 2)
-    # params['batch_size'], device, params['n_epoch'], 2, params['sample_size'], params)
 
     train_Y1_hat = evaluate_model_on_actions(nn_stage2, train_input_stage2, train_A2) + train_Y1
     val_Y1_hat = evaluate_model_on_actions(nn_stage2, val_input_stage2, val_A2) + val_Y1
 
-    train_losses_stage1, val_losses_stage1, epoch_num_model_1 = train_and_validate(nn_stage1, optimizer_1, scheduler_1, train_input_stage1, train_A1, train_Y1_hat, 
+    train_losses_stage1, val_losses_stage1, epoch_num_model_1 = train_and_validate(nn_stage1, optimizer_1, 
+                                                                                   scheduler_1, train_input_stage1, train_A1, train_Y1_hat, 
                                                                                    val_input_stage1, val_A1, val_Y1_hat, params, 1)
-    # params['batch_size'], device, params['n_epoch'], 1, params['sample_size'])
 
     return (nn_stage1, nn_stage2, (train_losses_stage1, train_losses_stage2, val_losses_stage1, val_losses_stage2))
 
@@ -192,7 +197,8 @@ def eval_DTR(V_replications, num_replications, nn_stage1, nn_stage2, df, params)
     nn_stage2 = initialize_and_load_model(2, params['sample_size'] , params)
 
     # Calculate test outputs for all networks in stage 1
-    A1, test_outputs_stage1 = compute_test_outputs(nn = nn_stage1, test_input = test_input_stage1, A_tensor = A1_tensor_test, params=params, is_stage1=True)
+    A1, test_outputs_stage1 = compute_test_outputs(nn = nn_stage1, test_input = test_input_stage1, A_tensor = A1_tensor_test, 
+                                                   params=params, is_stage1=True)
     test_input_stage2, Y1_pred = prepare_stage2_test_input(O1_tensor_test = test_input_stage1 , A1 = A1, 
                                                            g1_opt_conditions = d1_star, Z1_tensor_test = Z1)
 
@@ -215,7 +221,7 @@ def eval_DTR(V_replications, num_replications, nn_stage1, nn_stage2, df, params)
 
 
     message = f'\nY1_pred mean: {torch.mean(Y1_pred)}, Y2_pred mean:  {torch.mean(Y2_pred)}, Y1_pred+Y2_pred mean: {torch.mean(Y1_pred + Y2_pred)} \n'
-    logging.info(message)
+    print(message)
 
     V_replications = calculate_policy_values(Y1_tensor=Y1_tensor, Y2_tensor=Y2_tensor, 
                                              d1_star=d1_star, d2_star=d2_star, 
@@ -235,13 +241,13 @@ def simulations(num_replications, V_replications, params):
     epoch_num_model_lst = []
 
     for replication in tqdm(range(num_replications), desc="Replications_M1"):
-        logging.info(f"Replication # -------------->>>>>  {replication+1}")
+        print(f"Replication # -------------->>>>>  {replication+1}")
 
         # Generate and preprocess data for training
         tuple_train, tuple_val = generate_and_preprocess_data(params, replication_seed=replication, run='train')
 
         # Estimate treatment regime : model --> surr_opt
-        logging.info("Training started!")
+        print("Training started!")
         if params['f_model'] == 'DQlearning':
             nn_stage1, nn_stage2, trn_val_loss_tpl = DQlearning(tuple_train, tuple_val, params)
         else:
@@ -251,7 +257,7 @@ def simulations(num_replications, V_replications, params):
         losses_dict[replication] = trn_val_loss_tpl
         
         # eval_DTR
-        logging.info("Evaluation started")
+        print("Evaluation started")
         V_replications, df = eval_DTR(V_replications, replication, nn_stage1, nn_stage2, df, params)
         
     return V_replications, df, losses_dict, epoch_num_model_lst
@@ -265,6 +271,8 @@ def run_training(config, config_updates, V_replications, replication_seed):
     # Execute the simulation function using updated settings
     V_replications, df, losses_dict, epoch_num_model_lst = simulations(local_config['num_replications'], V_replications, local_config)
     accuracy_df = calculate_accuracies(df, V_replications)
+    
+    print("accuracy_df: \n", accuracy_df, "\n\n")
     return accuracy_df, df, losses_dict, epoch_num_model_lst
     
 
@@ -300,9 +308,9 @@ def run_training(config, config_updates, V_replications, replication_seed):
 #         # Store and log average performance across replications for each configuration
 #         config_key = json.dumps(current_config, sort_keys=True)
 #         results[config_key] = performances.mean()
-#         logging.info("Performances for configuration: %s", config_key)
-#         logging.info("%s", performances)
-#         logging.info("\n\n")
+#         print("Performances for configuration: %s", config_key)
+#         print("%s", performances)
+#         print("\n\n")
 
 #     folder = f"data/{config['job_id']}"
 #     save_simulation_data(all_dfs, all_losses_dicts, all_epoch_num_lists, results, folder)
@@ -311,13 +319,10 @@ def run_training(config, config_updates, V_replications, replication_seed):
         
 # def main():
 
-#     # setup_logging
-#     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-#     logger = logging.getLogger(__name__) 
 
 #     # Load configuration and set up the device
 #     config = load_config()
-#     logging.info("Model used: %s", config['f_model'])
+#     print("Model used: %s", config['f_model'])
 
 #     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 #     config['device'] = device
@@ -327,7 +332,7 @@ def run_training(config, config_updates, V_replications, replication_seed):
 
 #     training_validation_prop = config['training_validation_prop']
 #     train_size = int(training_validation_prop * config['sample_size'])
-#     logging.info("Training size: %d", train_size)
+#     print("Training size: %d", train_size)
 
 #     if config['f_model'] != 'surr_opt':
 #         config['input_dim_stage1'] = 6
@@ -357,10 +362,8 @@ def run_training(config, config_updates, V_replications, replication_seed):
 #     start_time = time.time()
 #     main()
 #     end_time = time.time()
-#     logging.info(f'Total time taken: {end_time - start_time:.2f} seconds')
+#     print(f'Total time taken: {end_time - start_time:.2f} seconds')
 
-    
-    
     
     
     
@@ -372,8 +375,6 @@ def run_training(config, config_updates, V_replications, replication_seed):
 # parallelized version
     
 def run_training_with_params(params):
-    logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    logger = logging.getLogger(__name__) 
 
     config, current_config, V_replications, i = params
     return run_training(config, current_config, V_replications, replication_seed=i)
@@ -391,7 +392,7 @@ def run_grid_search(config, param_grid):
     param_combinations = [dict(zip(param_grid.keys(), param)) for param in product(*param_grid.values())]
 
     num_workers = multiprocessing.cpu_count()
-    logging.info(f'{num_workers} available workers for ProcessPoolExecutor.')
+    print(f'{num_workers} available workers for ProcessPoolExecutor.')
 
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         future_to_params = {}
@@ -410,7 +411,7 @@ def run_grid_search(config, param_grid):
             current_config, i = future_to_params[future]
             try:
                 performance, df, losses_dict, epoch_num_model_lst = future.result()
-                logging.info(f'Configuration {current_config}, replication {i} completed successfully.')
+                print(f'Configuration {current_config}, replication {i} completed successfully.')
                 
                 performances = pd.DataFrame()
                 performances = pd.concat([performances, performance], axis=0)
@@ -420,19 +421,39 @@ def run_grid_search(config, param_grid):
                 
                 # Store and print average performance across replications for each configuration
                 config_key = json.dumps(current_config, sort_keys=True)
+                
+                performance_mean = performances["Method's Value fn."].mean()
+                behavioral_mean = performances["Behavioral Value fn."].mean()  
+                optimal_mean = performances["Optimal Value fn."].mean()
+                
+                mean_A1 = performances["Accuracy_A1"].mean()
+                mean_A2 = performances["Accuracy_A2"].mean()
+                
+                # Check if the configuration key exists in the results dictionary
                 if config_key not in results:
-                    results[config_key] = performances.mean()
+                    # If not, initialize it with dictionaries for each model containing the mean values
+                    results[config_key] = {"Model": config["f_model"],
+                                           "Accuracy_A1": mean_A1, 
+                                           "Accuracy_A2": mean_A2, 
+                                           "Method's Value fn.": performance_mean, 
+                                           'Behavioral Value fn.': behavioral_mean, 
+                                           'Optimal Value fn.': optimal_mean}
                 else:
-                    results[config_key] += performances.mean()
-            except Exception as exc:
-                logging.error(f'Generated an exception for config {current_config}, replication {i}: {exc}')
+                    # Update existing entries with new means
+                    results[config_key].update({"Model": config["f_model"],                                         
+                                                "Accuracy_A1": mean_A1, 
+                                                "Accuracy_A2": mean_A2, 
+                                                "Method's Value fn.": performance_mean, 
+                                                'Behavioral Value fn.': behavioral_mean, 
+                                                'Optimal Value fn.': optimal_mean})
+                
+                print("Performances at configuration: %s", config_key)
+                print("Method's Value fn.: ", performance_mean,' Behavioral Value fn.: ', behavioral_mean, ' Optimal Value fn.: ', optimal_mean)
+                print("\n\n")
 
-        # Average the performances over the number of replications
-        for key in results:
-            results[key] /= grid_replications
-            logging.info('\n\n')
-            logging.info(f'\nPerformances for configuration: \n{key}')
-            logging.info(f'\n{results[key].to_string()}')
+                    
+            except Exception as exc:
+                warnings.warn(f'Generated an exception for config {current_config}, replication {i}: {exc}')
 
     folder = f"data/{config['job_id']}"
     save_simulation_data(all_dfs, all_losses_dicts, all_epoch_num_lists, results, folder)
@@ -441,36 +462,40 @@ def run_grid_search(config, param_grid):
     
 def main():
     
-    # setup_logging
-    logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    logger = logging.getLogger(__name__) 
-
     # Load configuration and set up the device
     config = load_config()
-    logging.info("Model used: %s", config['f_model'])
+    print("Model used: %s", config['f_model'])
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     config['device'] = device
 
+    # Get the SLURM_JOB_ID from environment variables
     job_id = os.getenv('SLURM_JOB_ID')
-    config['job_id'] = job_id
+
+    # If job_id is None, set it to the current date and time formatted as a string
+    if job_id is None:
+        job_id = datetime.now().strftime('%Y%m%d%H%M%S')  # Format: YYYYMMDDHHMMSS
+          
+    config['job_id'] = job_id  
+    
+    print("Job ID: ", job_id)
 
     training_validation_prop = config['training_validation_prop']
     train_size = int(training_validation_prop * config['sample_size'])
-    logging.info("Training size: %d", train_size)
+    print("Training size: %d", train_size)
 
     if config['f_model'] != 'surr_opt':
-        config['input_dim_stage1'] = 6
-        config['input_dim_stage2'] = 8 
+        config['input_dim_stage1'] = config['input_dim_stage1'] + 1 # 5 + 1 = 6 # (H_1, A_1)
+        config['input_dim_stage2'] = config['input_dim_stage2'] + 1 # 7 + 1 = 8 # (H_2, A_2) 
         config['num_networks'] = 1
-
+    
     
     # Define parameter grid for grid search
     param_grid = {
-        'activation_function': ['relu', 'elu'],
-        'batch_size': [3072],
+        'activation_function': ['relu'],
+        'batch_size': [3072, 8000],
         'learning_rate': [0.007],
-        'num_layers': [4]
+        'num_layers': [2]
     }
 
 #     # Define parameter grid for grid search
@@ -495,13 +520,31 @@ def main():
     
 if __name__ == '__main__':
     multiprocessing.set_start_method('spawn', force=True)
+    
+    # Record the start time
     start_time = time.time()
+    start_time_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))
+    print(f'Start time: {start_time_str}')
+    
     main()
+    
+    # Record the end time
     end_time = time.time()
-    logging.info(f'Total time taken: {end_time - start_time:.2f} seconds')
+    end_time_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(end_time))
+    print(f'End time: {end_time_str}')
+    
+    # Calculate and log the total time taken
+    total_time = end_time - start_time
+    print(f'Total time taken: {total_time:.2f} seconds')
 
 
 
+# if __name__ == '__main__':
+#     multiprocessing.set_start_method('spawn', force=True)
+#     start_time = time.time()
+#     main()
+#     end_time = time.time()
+#     print(f'Total time taken: {end_time - start_time:.2f} seconds')
 
 
 

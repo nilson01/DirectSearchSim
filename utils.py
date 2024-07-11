@@ -5,21 +5,23 @@ import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
 from tqdm.notebook import tqdm
-import warnings
 import numpy as np
 import pandas as pd
 import pickle
 import yaml
 import matplotlib.pyplot as plt
 from collections import Counter
-import logging
 import torch.nn.functional as F
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.exceptions import ConvergenceWarning
+import warnings
 
 
 
 # Set the device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-logger = logging.getLogger(__name__)
 
 
 # 0. Simulation run utils
@@ -40,7 +42,7 @@ def extract_unique_treatment_values(df, columns_to_process):
             unique_values[key][col] = set(all_values)
 
     log_message = "\nUnique values:\n" + "\n".join(f"{k}: {v}" for k, v in unique_values.items()) + "\n"
-    logger.info(log_message)
+    print(log_message)
     
     return unique_values
 
@@ -70,7 +72,7 @@ def save_simulation_data(global_df, all_losses_dicts, all_epoch_num_lists, resul
     with open(results_path, 'wb') as f:
         pickle.dump(results, f)
 
-    logger.info("Data saved successfully in the folder: %s", folder)
+    print("Data saved successfully in the folder: %s", folder)
 
 
 def save_results_to_dataframe(results, folder):
@@ -93,8 +95,8 @@ def save_results_to_dataframe(results, folder):
 
     df = pd.DataFrame(data)
     
-    # Sort the DataFrame by 'Behavioral Value fn.' in descending order
-    df = df.sort_values(by="Behavioral Value fn.", ascending=False)
+    # Sort the DataFrame by 'Method's Value fn.' in descending order
+    df = df.sort_values(by="Method's Value fn.", ascending=False)
     
     df.to_csv(f'{folder}/configurations_performance.csv', index=False)
     return df
@@ -144,17 +146,17 @@ def load_and_process_data(params, folder):
     # for i, epoch_num_list in enumerate(all_epoch_num_lists):
         # run_name = f"Simulation run epoch_num_{i}"        
         # plot_epoch_frequency(epoch_num_list, params['n_epoch'], run_name)  
-
-    # Print results for each configuration
-    logger.info("\n\n")
-    for config_key, performance in results.items():
-        logger.info("Configuration: %s\nAverage Performance:\n %s\n", config_key, performance.to_string(index=True, header=False))
     
+    print("\n\n")
+    print("<<<<<<<<<<<<<<<<<<<<<<<<<<<--------------------------------------------------->>>>>>>>>>>>>>>>>>>>>>>>>>>")
+    print("<<<<<<<<<<<<<<<<<<<<<<<<-----------------------FINAL RESULTS------------------------>>>>>>>>>>>>>>>>>>>>>>>")
+    print("<<<<<<<<<<<<<<<<<<<<<<<<<<<--------------------------------------------------->>>>>>>>>>>>>>>>>>>>>>>>>>>")
+    for config_key, performance in results.items():
+        print("Configuration: %s\nAverage Performance:\n %s\n", config_key, json.dumps(performance, indent=4))
+        
     # Call the function to plot value functions
     df = save_results_to_dataframe(results, folder)
     plot_value_functions(results, folder)
-
-
 
 
 
@@ -166,10 +168,10 @@ def load_and_process_data(params, folder):
 def A_sim(matrix_pi, stage):
     N, K = matrix_pi.shape  # sample size and treatment options
     if N <= 1 or K <= 1:
-        logger.error("Sample size or treatment options are insufficient! N: %d, K: %d", N, K)
+        warnings.warn("Sample size or treatment options are insufficient! N: %d, K: %d", N, K)
         raise ValueError("Sample size or treatment options are insufficient!")
     if torch.any(matrix_pi < 0):
-        logger.error("Treatment probabilities should not be negative!")
+        warnings.warn("Treatment probabilities should not be negative!")
         raise ValueError("Treatment probabilities should not be negative!")
 
     # Normalize probabilities to add up to 1 and simulate treatment A for each row
@@ -200,6 +202,47 @@ def transform_Y(Y1, Y2):
         Y2_trans = Y2
 
     return Y1_trans, Y2_trans
+
+
+
+def M_propen(A, Xs, stage):
+    """Estimate propensity scores using logistic or multinomial regression."""
+    A = np.asarray(A).reshape(-1, 1)
+    if A.shape[1] != 1:
+        raise ValueError("Cannot handle multiple stages of treatments together!")
+    if A.shape[0] != Xs.shape[0]:
+        print("A.shape, Xs.shape: ", A.shape, Xs.shape)
+        raise ValueError("A and Xs do not match in dimension!")
+    if len(np.unique(A)) <= 1:
+        raise ValueError("Treatment options are insufficient!")
+
+    # Handle multinomial case using Logistic Regression
+    encoder = OneHotEncoder(sparse_output=False)  # Updated parameter name
+    A_encoded = encoder.fit_transform(A)
+    model = LogisticRegression(multi_class='multinomial', solver='lbfgs', max_iter=1000)
+
+    # Suppressing warnings from the solver, if not converged
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ConvergenceWarning)
+        model.fit(Xs, A.ravel())
+
+    # Predicting probabilities
+    s_p = model.predict_proba(Xs)
+
+    if stage == 1:
+        col_names = ['pi_10', 'pi_11', 'pi_12']
+    else:
+        col_names = ['pi_20', 'pi_21', 'pi_22']
+        
+    #probs_df = pd.DataFrame(s_p, columns=col_names)
+    #probs_df = {name: s_p[:, idx] for idx, name in enumerate(col_names)}
+    probs_dict = {name: torch.tensor(s_p[:, idx], dtype=torch.float32) for idx, name in enumerate(col_names)}
+
+    return probs_dict
+
+
+
+
 
 
 # Neural networks utils
@@ -552,7 +595,7 @@ def plot_epoch_frequency(epoch_num_model_lst, n_epoch, run_name, folder='data'):
     # Save the plot
     plot_filename = os.path.join(folder, f"{run_name}.png")
     plt.savefig(plot_filename)
-    logging.info(f"plot_epoch_frequency Plot saved as: {plot_filename}")
+    print(f"plot_epoch_frequency Plot saved as: {plot_filename}")
     plt.close()  # Close the plot to free up memory
 
 
@@ -592,7 +635,7 @@ def plot_simulation_surLoss_losses_in_grid(selected_indices, losses_dict, n_epoc
     # Save the plot
     plot_filename = os.path.join(folder, f"{run_name}.png")
     plt.savefig(plot_filename)
-    logging.info(f"TrainVval Plot saved as: {plot_filename}")
+    print(f"TrainVval Plot saved as: {plot_filename}")
     plt.close(fig)  # Close the plot to free up memory
 
 
@@ -644,7 +687,7 @@ def plot_simulation_Qlearning_losses_in_grid(selected_indices, losses_dict, run_
     # Save the plot
     plot_filename = os.path.join(folder, f"{run_name}.png")
     plt.savefig(plot_filename)
-    logging.info(f"TrainVval Plot Deep Q Learning saved as: {plot_filename}")
+    print(f"TrainVval Plot Deep Q Learning saved as: {plot_filename}")
     plt.close(fig)  # Close the plot to free up memory
 
 
@@ -722,7 +765,7 @@ def compute_phi(x, option):
     elif option == 5:
         return torch.where(x >= 0, torch.tensor(1.0), torch.tensor(0.0))
     else:
-        logger.error("Invalid phi option: %s", option)
+        warnings.warn("Invalid phi option: %s", option)
         raise ValueError("Invalid phi option")
 
 
@@ -858,7 +901,7 @@ def initialize_optimizer_and_scheduler(nn_stage1, nn_stage2, params):
     elif params['optimizer_type'] == 'rmsprop':
         optimizer = optim.RMSprop(combined_params, lr=params['optimizer_lr'], weight_decay=params['optimizer_weight_decay'])
     else:
-        logging.warning("No valid optimizer type found in params['optimizer_type'], defaulting to Adam.")
+        warnings.warn("No valid optimizer type found in params['optimizer_type'], defaulting to Adam.")
         optimizer = optim.Adam(combined_params, lr=params['optimizer_lr'])  # Default to Adam if none specified
 
     # Initialize scheduler only if use_scheduler is True
@@ -872,7 +915,7 @@ def initialize_optimizer_and_scheduler(nn_stage1, nn_stage2, params):
             T_max = (params['sample_size'] // params['batch_size']) * params['n_epoch']
             scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_max, eta_min=0.0001)
         else:
-            logging.warning("No valid scheduler type found in params['scheduler_type'], defaulting to StepLR.")
+            warnings.warn("No valid scheduler type found in params['scheduler_type'], defaulting to StepLR.")
             scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=params['scheduler_step_size'], gamma=params['scheduler_gamma'])  # Default to StepLR if none specified
 
     return optimizer, scheduler
@@ -881,7 +924,7 @@ def initialize_optimizer_and_scheduler(nn_stage1, nn_stage2, params):
 def update_scheduler(scheduler, params, val_loss=None):
 
     if scheduler is None:
-        logging.warning("Scheduler is not initialized but update_scheduler was called.")
+        warnings.warn("Scheduler is not initialized but update_scheduler was called.")
         return
     
     # Check the type of scheduler and step accordingly
@@ -890,7 +933,7 @@ def update_scheduler(scheduler, params, val_loss=None):
         if val_loss is not None:
             scheduler.step(val_loss)
         else:
-            logging.warning("Validation loss required for ReduceLROnPlateau but not provided.")
+            warnings.warn("Validation loss required for ReduceLROnPlateau but not provided.")
     else:
         # Other schedulers like StepLR or CosineAnnealingLR do not use the validation loss
         scheduler.step()
@@ -906,6 +949,41 @@ def update_scheduler(scheduler, params, val_loss=None):
 
 # 3. Q learning utils
 
+
+def process_batches_DQL(model, inputs, actions, targets, params, optimizer, is_train=True):
+    batch_size = params['batch_size']
+    total_loss = 0
+    num_batches = (inputs.shape[0] + batch_size - 1) // batch_size
+
+    if is_train:
+        model.train()
+    else:
+        model.eval()
+
+    for batch_idx in batches(inputs.shape[0], batch_size):
+
+        with torch.set_grad_enabled(is_train):
+                        
+            batch_idx = batch_idx.to(device)
+            inputs_batch = torch.index_select(inputs, 0, batch_idx).to(device)
+            actions_batch = torch.index_select(actions, 0, batch_idx).to(device)
+            targets_batch = torch.index_select(targets, 0, batch_idx).to(device)
+            combined_inputs = torch.cat((inputs_batch, actions_batch.unsqueeze(-1)), dim=1)
+            outputs = model(combined_inputs)
+            loss = F.mse_loss(torch.cat(outputs, dim=0).view(-1), targets_batch)
+            
+            if is_train:
+                optimizer.zero_grad()
+                loss.backward(retain_graph=True)
+                optimizer.step()
+
+        total_loss += loss.item()
+    avg_loss = total_loss / num_batches
+    return avg_loss
+
+
+
+
 def train_and_validate(model, optimizer, scheduler, train_inputs, train_actions, train_targets, val_inputs, val_actions, val_targets, params, stage_number):
 
     batch_size, device, n_epoch, sample_size = params['batch_size'], params['device'], params['n_epoch'], params['sample_size']
@@ -915,57 +993,20 @@ def train_and_validate(model, optimizer, scheduler, train_inputs, train_actions,
     epoch_num_model = 0
 
     for epoch in range(n_epoch):
-        model.train()
-        total_train_loss = 0
+        
+        train_loss = process_batches_DQL(model, train_inputs, train_actions, train_targets, params, optimizer, is_train=True)
+        train_losses.append(train_loss)
 
-        for batch_idx in batches(train_inputs.shape[0], batch_size, epoch):
-            batch_idx = batch_idx.to(device)
-            inputs_batch = torch.index_select(train_inputs, 0, batch_idx).to(device)
-            actions_batch = torch.index_select(train_actions, 0, batch_idx).to(device)
-            targets_batch = torch.index_select(train_targets, 0, batch_idx).to(device)
-            combined_inputs = torch.cat((inputs_batch, actions_batch.unsqueeze(-1)), dim=1)
+        val_loss = process_batches_DQL(model, val_inputs, val_actions, val_targets, params, optimizer, is_train=False)
+        val_losses.append(val_loss)
 
-            optimizer.zero_grad()
-            outputs = model(combined_inputs)
-            loss = F.mse_loss(torch.cat(outputs, dim=0).view(-1), targets_batch)
-            # print("Qnn output: ", torch.cat(outputs, dim=0).view(-1))
-            # print("targets_batch: ", targets_batch)
-            total_train_loss += loss.item()
-            loss.backward(retain_graph=True)
-            optimizer.step()
-
-
-        num_batches_t = (train_inputs.shape[0] + batch_size - 1) // batch_size
-        avg_train_loss = total_train_loss / num_batches_t
-
-        train_losses.append(avg_train_loss)
-
-        model.eval()
-        total_val_loss = 0
-
-        with torch.no_grad():
-            for batch_idx in batches(val_inputs.shape[0], batch_size):
-                batch_idx = batch_idx.to(device)
-                inputs_batch = torch.index_select(val_inputs, 0, batch_idx).to(device)
-                actions_batch = torch.index_select(val_actions, 0, batch_idx).to(device)
-                targets_batch = torch.index_select(val_targets, 0, batch_idx).to(device)
-                combined_inputs = torch.cat((inputs_batch, actions_batch.unsqueeze(-1)), dim=1)
-
-                outputs = model(combined_inputs)
-                loss = F.mse_loss(torch.cat(outputs, dim=0).view(-1), targets_batch)
-
-                total_val_loss += loss.item()
-
-        num_batches_v = (val_inputs.shape[0] + batch_size - 1) // batch_size
-        avg_val_loss = total_val_loss / num_batches_v
-        val_losses.append(avg_val_loss)
-
-        if avg_val_loss < best_val_loss and epoch > 20:
+        if val_loss < best_val_loss:
             epoch_num_model = epoch
-            best_val_loss = avg_val_loss
+            best_val_loss = val_loss
             best_model_params = model.state_dict()
 
-        # scheduler.step()
+        # Update the scheduler with the current epoch's validation loss
+        update_scheduler(scheduler, params, val_loss)
 
     # Define file paths for saving models
     model_dir = f"models/{params['job_id']}"
@@ -981,12 +1022,121 @@ def train_and_validate(model, optimizer, scheduler, train_inputs, train_actions,
     return train_losses, val_losses, epoch_num_model
 
 
+# def train_and_validate(model, optimizer, scheduler, train_inputs, train_actions, train_targets, val_inputs, val_actions, val_targets, params, stage_number):
+
+#     batch_size, device, n_epoch, sample_size = params['batch_size'], params['device'], params['n_epoch'], params['sample_size']
+#     train_losses, val_losses = [], []
+#     best_val_loss = float('inf')
+#     best_model_params = None
+#     epoch_num_model = 0
+
+#     for epoch in range(n_epoch):
+#         model.train()
+#         total_train_loss = 0
+
+#         for batch_idx in batches(train_inputs.shape[0], batch_size, epoch):
+#             batch_idx = batch_idx.to(device)
+#             inputs_batch = torch.index_select(train_inputs, 0, batch_idx).to(device)
+#             actions_batch = torch.index_select(train_actions, 0, batch_idx).to(device)
+#             targets_batch = torch.index_select(train_targets, 0, batch_idx).to(device)
+#             combined_inputs = torch.cat((inputs_batch, actions_batch.unsqueeze(-1)), dim=1)
+
+#             optimizer.zero_grad()
+#             outputs = model(combined_inputs)
+#             loss = F.mse_loss(torch.cat(outputs, dim=0).view(-1), targets_batch)
+#             # print("Qnn output: ", torch.cat(outputs, dim=0).view(-1))
+#             # print("targets_batch: ", targets_batch)
+#             total_train_loss += loss.item()
+#             loss.backward(retain_graph=True)
+#             optimizer.step()
+
+
+#         num_batches_t = (train_inputs.shape[0] + batch_size - 1) // batch_size
+#         avg_train_loss = total_train_loss / num_batches_t
+
+#         train_losses.append(avg_train_loss)
+
+#         model.eval()
+#         total_val_loss = 0
+
+#         with torch.no_grad():
+#             for batch_idx in batches(val_inputs.shape[0], batch_size):
+#                 batch_idx = batch_idx.to(device)
+#                 inputs_batch = torch.index_select(val_inputs, 0, batch_idx).to(device)
+#                 actions_batch = torch.index_select(val_actions, 0, batch_idx).to(device)
+#                 targets_batch = torch.index_select(val_targets, 0, batch_idx).to(device)
+#                 combined_inputs = torch.cat((inputs_batch, actions_batch.unsqueeze(-1)), dim=1)
+
+#                 outputs = model(combined_inputs)
+#                 loss = F.mse_loss(torch.cat(outputs, dim=0).view(-1), targets_batch)
+
+#                 total_val_loss += loss.item()
+
+#         num_batches_v = (val_inputs.shape[0] + batch_size - 1) // batch_size
+#         avg_val_loss = total_val_loss / num_batches_v
+#         val_losses.append(avg_val_loss)
+
+#         if avg_val_loss < best_val_loss and epoch > 20:
+#             epoch_num_model = epoch
+#             best_val_loss = avg_val_loss
+#             best_model_params = model.state_dict()
+
+#         # scheduler.step()
+
+#     # Define file paths for saving models
+#     model_dir = f"models/{params['job_id']}"
+#     # Check if the directory exists, if not, create it
+#     if not os.path.exists(model_dir):
+#         os.makedirs(model_dir)
+        
+#     # Save the best model parameters after all epochs
+#     if best_model_params is not None:
+#         model_path = os.path.join(model_dir, f'best_model_stage_Q_{stage_number}_{sample_size}.pt')
+#         torch.save(best_model_params, model_path)
+        
+#     return train_losses, val_losses, epoch_num_model
+
+
+# def initialize_model_and_optimizer(params, stage):
+#     nn = initialize_nn(params, stage).to(device)
+#     optimizer = optim.Adam(nn.parameters(), lr=params['optimizer_lr'])
+#     # optimizer = optim.Adam(nn.parameters(), lr=params['optimizer_lr'], betas=params['optimizer_betas'], eps=params['optimizer_eps'])
+#     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=params['scheduler_step_size'], gamma=params['scheduler_gamma'])
+#     return nn, optimizer, scheduler
+
+
+
 def initialize_model_and_optimizer(params, stage):
     nn = initialize_nn(params, stage).to(device)
-    optimizer = optim.Adam(nn.parameters(), lr=params['optimizer_lr'])
-    # optimizer = optim.Adam(nn.parameters(), lr=params['optimizer_lr'], betas=params['optimizer_betas'], eps=params['optimizer_eps'])
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=params['scheduler_step_size'], gamma=params['scheduler_gamma'])
+        
+    # Select optimizer based on params
+    if params['optimizer_type'] == 'adam':
+        optimizer = optim.Adam(nn.parameters(), lr=params['optimizer_lr'])
+    elif params['optimizer_type'] == 'rmsprop':
+        optimizer = optim.RMSprop(nn.parameters(), lr=params['optimizer_lr'], weight_decay=params['optimizer_weight_decay'])
+    else:
+        warnings.warn("No valid optimizer type found in params['optimizer_type'], defaulting to Adam.")
+        optimizer = optim.Adam(nn.parameters(), lr=params['optimizer_lr'])  # Default to Adam if none specified
+
+    
+    # Initialize scheduler only if use_scheduler is True
+    scheduler = None
+    if params.get('use_scheduler', False):  # Defaults to False if 'use_scheduler' is not in params
+        if params['scheduler_type'] == 'reducelronplateau':
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.01, patience=10)
+        elif params['scheduler_type'] == 'steplr':
+            scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=params['scheduler_step_size'], gamma=params['scheduler_gamma'])
+        elif params['scheduler_type'] == 'cosineannealing':
+            T_max = (params['sample_size'] // params['batch_size']) * params['n_epoch']
+            scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_max, eta_min=0.0001)
+        else:
+            warnings.warn("No valid scheduler type found in params['scheduler_type'], defaulting to StepLR.")
+            scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=params['scheduler_step_size'], 
+                                                  gamma=params['scheduler_gamma'])  # Default to StepLR if none specified    
+    
     return nn, optimizer, scheduler
+
+
 
 def evaluate_model_on_actions(model, inputs, action_t):
     actions_list = [1, 2, 3]
@@ -1080,7 +1230,7 @@ def calculate_policy_values(Y1_tensor, Y2_tensor, d1_star, d2_star, Y1_pred, Y2_
 
     # DEBUG PRINT
     message = f'\nY1_opt mean: {torch.mean(Y1_test_opt)}, Y2_opt mean: {torch.mean(Y2_test_opt)}, Y1_opt+Y2_opt mean: {torch.mean(Y1_test_opt + Y2_test_opt)} \n\n'
-    logging.info(message)
+    print(message)
 
     V_d1_d2_opt = torch.mean(Y1_test_opt + Y2_test_opt).cpu().item()  # Calculate the mean value and convert to Python scalar
     V_replications["V_replications_M1_optimal"].append(V_d1_d2_opt)  # Append to the list for optimal policy values
@@ -1109,13 +1259,9 @@ def initialize_and_load_model(stage, sample_size, params):
         
     model_path = os.path.join(model_dir, model_filename)
     
-    # Set up logging
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger(__name__)
-    
     # Check if the model file exists before attempting to load
     if not os.path.exists(model_path):
-        logger.error(f"No model file found at {model_path}. Please check the file path and model directory.")
+        warnings.warn(f"No model file found at {model_path}. Please check the file path and model directory.")
         return None  # or handle the error as needed
     
     # Load the model's state dictionary from the file

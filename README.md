@@ -84,9 +84,10 @@ Utility functions required for the simulations are available in the `utils.py` f
 
 3. **Check the logs**:
    Logs will provide information in detail of the simulation.
+   All essential results will be stored in the data folder. 
 
 ## Contact
 
 For any issues or questions, please contact [Nilson Chapagain](mailto:nilson.chapagain@gmail.com).
-```
+
 

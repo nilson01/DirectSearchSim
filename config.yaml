@@ -8,9 +8,10 @@ noiseless: True  # Boolean flag to indicate if noise should be excluded in simul
 sample_size: 30000  # Number of samples to be used
 num_replications: 3
 job_id: tao
+use_m_propen: True  # True, False
 
 training_validation_prop: 0.7  # Proportion of data for training vs validation
-n_epoch: 150  # Number of training epochs
+n_epoch: 60  # Number of training epochs
 batch_size: 3000  # Batch size calculated as a proportion of sample size
 num_networks: 2  # Number of parallel networks or models
 activation_function: elu # elu, relu
@@ -26,7 +27,7 @@ optimizer_type: adam  # Optimizer type, can be 'adam' or 'rmsprop'
 optimizer_lr: 0.07  # Learning rate for the optimizer
 optimizer_weight_decay: 0.001  # Weight decay (L2 regularization) helps prevent overfitting
 
-use_scheduler: True
+use_scheduler: True # True, False
 scheduler_type: reducelronplateau  # Type of learning rate scheduler, can be 'reducelronplateau', 'steplr', or 'cosineannealing'
 scheduler_step_size: 30  # Step size for StepLR, defines the number of epochs before the next LR decay
 scheduler_gamma: 0.8  # Decay rate for learning rate under StepLR
