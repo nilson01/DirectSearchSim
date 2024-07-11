@@ -112,7 +112,7 @@ def generate_and_preprocess_data(params, replication_seed, run='train'):
 
 
 
-def surr_opt(tuple_train, tuple_val, params):
+def surr_opt(tuple_train, tuple_val, params, config_number):
     
     sample_size = params['sample_size'] 
     
@@ -153,8 +153,8 @@ def surr_opt(tuple_train, tuple_val, params):
         os.makedirs(model_dir)
     
     # Define file paths for saving models
-    model_path_stage1 = os.path.join(model_dir, f'best_model_stage_surr_1_{sample_size}.pt')
-    model_path_stage2 = os.path.join(model_dir, f'best_model_stage_surr_2_{sample_size}.pt')
+    model_path_stage1 = os.path.join(model_dir, f'best_model_stage_surr_1_{sample_size}_config_number_{config_number}.pt')
+    model_path_stage2 = os.path.join(model_dir, f'best_model_stage_surr_2_{sample_size}_config_number_{config_number}.pt')
     
     # Save the models
     torch.save(best_model_stage1_params, model_path_stage1)
@@ -164,7 +164,7 @@ def surr_opt(tuple_train, tuple_val, params):
 
 
 
-def DQlearning(tuple_train, tuple_val, params):
+def DQlearning(tuple_train, tuple_val, params, config_number):
     train_input_stage1, train_input_stage2, _, train_Y1, train_Y2, train_A1, train_A2 = tuple_train
     val_input_stage1, val_input_stage2, _, val_Y1, val_Y2, val_A1, val_A2 = tuple_val
 
@@ -172,13 +172,13 @@ def DQlearning(tuple_train, tuple_val, params):
     nn_stage1, optimizer_1, scheduler_1 = initialize_model_and_optimizer(params, 1)
     nn_stage2, optimizer_2, scheduler_2 = initialize_model_and_optimizer(params, 2)
 
-    train_losses_stage2, val_losses_stage2, epoch_num_model_2 = train_and_validate(nn_stage2, optimizer_2, scheduler_2, train_input_stage2, train_A2, train_Y2, 
+    train_losses_stage2, val_losses_stage2, epoch_num_model_2 = train_and_validate(config_number, nn_stage2, optimizer_2, scheduler_2, train_input_stage2, train_A2, train_Y2, 
                                                                                    val_input_stage2, val_A2, val_Y2, params, 2)
 
     train_Y1_hat = evaluate_model_on_actions(nn_stage2, train_input_stage2, train_A2) + train_Y1
     val_Y1_hat = evaluate_model_on_actions(nn_stage2, val_input_stage2, val_A2) + val_Y1
 
-    train_losses_stage1, val_losses_stage1, epoch_num_model_1 = train_and_validate(nn_stage1, optimizer_1, 
+    train_losses_stage1, val_losses_stage1, epoch_num_model_1 = train_and_validate(config_number, nn_stage1, optimizer_1, 
                                                                                    scheduler_1, train_input_stage1, train_A1, train_Y1_hat, 
                                                                                    val_input_stage1, val_A1, val_Y1_hat, params, 1)
 
@@ -187,14 +187,14 @@ def DQlearning(tuple_train, tuple_val, params):
 
 
 
-def eval_DTR(V_replications, num_replications, nn_stage1, nn_stage2, df, params):
+def eval_DTR(V_replications, num_replications, nn_stage1, nn_stage2, df, params, config_number):
 
     # Generate and preprocess data for evaluation
     processed_result = generate_and_preprocess_data(params, replication_seed=num_replications, run='test')
     test_input_stage1, test_input_stage2, Ci_tensor, Y1_tensor, Y2_tensor, A1_tensor_test, A2_tensor_test, P_A1_g_H1, P_A2_g_H2, d1_star, d2_star, Z1, Z2  = processed_result
 
-    nn_stage1 = initialize_and_load_model(1, params['sample_size'] , params)
-    nn_stage2 = initialize_and_load_model(2, params['sample_size'] , params)
+    nn_stage1 = initialize_and_load_model(1, params['sample_size'] , params, config_number)
+    nn_stage2 = initialize_and_load_model(2, params['sample_size'] , params, config_number)
 
     # Calculate test outputs for all networks in stage 1
     A1, test_outputs_stage1 = compute_test_outputs(nn = nn_stage1, test_input = test_input_stage1, A_tensor = A1_tensor_test, 
@@ -234,14 +234,15 @@ def eval_DTR(V_replications, num_replications, nn_stage1, nn_stage2, df, params)
 
 
 
-def simulations(num_replications, V_replications, params):
+def simulations(V_replications, params, config_number):
     columns = ['Behavioral_A1', 'Behavioral_A2', 'Predicted_A1', 'Predicted_A2', 'Optimal_A1', 'Optimal_A2']
     df = pd.DataFrame(columns=columns)
     losses_dict = {}
     epoch_num_model_lst = []
 
-    for replication in tqdm(range(num_replications), desc="Replications_M1"):
+    for replication in tqdm(range(params['num_replications']), desc="Replications_M1"):
         print(f"Replication # -------------->>>>>  {replication+1}")
+        params["Replication#"] = replication+1
 
         # Generate and preprocess data for training
         tuple_train, tuple_val = generate_and_preprocess_data(params, replication_seed=replication, run='train')
@@ -249,27 +250,27 @@ def simulations(num_replications, V_replications, params):
         # Estimate treatment regime : model --> surr_opt
         print("Training started!")
         if params['f_model'] == 'DQlearning':
-            nn_stage1, nn_stage2, trn_val_loss_tpl = DQlearning(tuple_train, tuple_val, params)
+            nn_stage1, nn_stage2, trn_val_loss_tpl = DQlearning(tuple_train, tuple_val, params, config_number)
         else:
-            nn_stage1, nn_stage2, trn_val_loss_tpl, epoch_num_model = surr_opt(tuple_train, tuple_val, params)
+            nn_stage1, nn_stage2, trn_val_loss_tpl, epoch_num_model = surr_opt(tuple_train, tuple_val, params, config_number)
             epoch_num_model_lst.append(epoch_num_model)
             
         losses_dict[replication] = trn_val_loss_tpl
         
         # eval_DTR
         print("Evaluation started")
-        V_replications, df = eval_DTR(V_replications, replication, nn_stage1, nn_stage2, df, params)
+        V_replications, df = eval_DTR(V_replications, replication, nn_stage1, nn_stage2, df, params, config_number)
         
     return V_replications, df, losses_dict, epoch_num_model_lst
 
 
 
-def run_training(config, config_updates, V_replications, replication_seed):
+def run_training(config, config_updates, V_replications, config_number, replication_seed):
     torch.manual_seed(replication_seed)
     local_config = {**config, **config_updates}  # Create a local config that includes both global settings and updates
     
     # Execute the simulation function using updated settings
-    V_replications, df, losses_dict, epoch_num_model_lst = simulations(local_config['num_replications'], V_replications, local_config)
+    V_replications, df, losses_dict, epoch_num_model_lst = simulations(V_replications, local_config, config_number)
     accuracy_df = calculate_accuracies(df, V_replications)
     
     print("accuracy_df: \n", accuracy_df, "\n\n")
@@ -380,18 +381,15 @@ class FlushFile:
 
     
     
-    
-    
-    
-    
+
     
         
 # parallelized version
     
 def run_training_with_params(params):
 
-    config, current_config, V_replications, i = params
-    return run_training(config, current_config, V_replications, replication_seed=i)
+    config, current_config, V_replications, i, config_number = params
+    return run_training(config, current_config, V_replications, config_number, replication_seed=i)
  
 
 def run_grid_search(config, param_grid):
@@ -410,14 +408,17 @@ def run_grid_search(config, param_grid):
 
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         future_to_params = {}
-        for current_config in param_combinations:
+        # for current_config in param_combinations:     
+        for config_number, current_config in enumerate(param_combinations):
+            
             for i in range(grid_replications): 
                 V_replications = {
                     "V_replications_M1_pred": [],
                     "V_replications_M1_behavioral": [],
                     "V_replications_M1_optimal": []
                 }
-                params = (config, current_config, V_replications, i)
+                # params = (config, current_config, V_replications, i)             
+                params = (config, current_config, V_replications, i, config_number)
                 future = executor.submit(run_training_with_params, params)
                 future_to_params[future] = (current_config, i)
 
@@ -507,11 +508,23 @@ def main():
     # Define parameter grid for grid search
     param_grid = {
         'activation_function': ['relu'],
-        'batch_size': [3072, 8000],
-        'learning_rate': [0.007],
+        'batch_size': [8000],
+        'learning_rate': [0.2, 0.03, 0.025, 0.02, 0.015, 0.01, 0.005, 0.0025],
         'num_layers': [2]
     }
-
+    
+#     # Define refined parameter grid for grid search
+#     param_grid = {
+#         'activation_function': ['relu'],
+#         'batch_size': [8000],
+#         'learning_rate': [0.03, 0.025, 0.02, 0.015, 0.01, 0.005, 0.0025],
+#         'num_layers': [1, 2],
+#         # Additional hyperparameters to consider
+#         'optimizer': ['adam', 'sgd'],
+#         'dropout_rate': [0.0, 0.2, 0.5],
+#         'neurons_per_layer': [32, 64, 128]
+#     }
+    
 #     # Define parameter grid for grid search
 #     param_grid = {
 #         'activation_function': ['relu', 'elu'],

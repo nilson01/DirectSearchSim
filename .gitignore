@@ -1,7 +1,7 @@
 __pycache__/
 venv/
 *.pkl
-results_sim.ipynb
+test_sim_outs.ipynb
 data/
 test.py
 models/

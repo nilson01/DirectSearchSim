@@ -132,15 +132,17 @@ def load_and_process_data(params, folder):
         'Optimal': ['Optimal_A1', 'Optimal_A2']
     }
     unique_values = extract_unique_treatment_values(global_df, columns_to_process)
+    
+    train_size = int(params['training_validation_prop'] * params['sample_size'])
 
     # Process and plot results from all simulations
     for i, losses_dict in enumerate(all_losses_dicts):
         run_name = f"Simulation run trainVval_{i}"
         selected_indices = [i for i in range(params['num_replications'])]  
         if  params['f_model'] == 'surr_opt' :
-            plot_simulation_surLoss_losses_in_grid(selected_indices, losses_dict, params['n_epoch'], run_name, folder)
+            plot_simulation_surLoss_losses_in_grid(selected_indices, losses_dict, train_size, run_name, folder)
         else:
-            plot_simulation_Qlearning_losses_in_grid(selected_indices, losses_dict, run_name, folder)
+            plot_simulation_Qlearning_losses_in_grid(selected_indices, losses_dict, train_size, run_name, folder)
 
     # # Plotting epoch frequencies for all runs
     # for i, epoch_num_list in enumerate(all_epoch_num_lists):
@@ -600,7 +602,7 @@ def plot_epoch_frequency(epoch_num_model_lst, n_epoch, run_name, folder='data'):
 
 
 
-def plot_simulation_surLoss_losses_in_grid(selected_indices, losses_dict, n_epoch, run_name, folder, cols=3):
+def plot_simulation_surLoss_losses_in_grid(selected_indices, losses_dict, train_size, run_name, folder, cols=3):
     # Ensure the directory exists
     if not os.path.exists(folder):
         os.makedirs(folder)
@@ -610,7 +612,7 @@ def plot_simulation_surLoss_losses_in_grid(selected_indices, losses_dict, n_epoc
 
     # Create a figure and a set of subplots
     fig, axes = plt.subplots(rows, cols, figsize=(5*cols, 4*rows))  # Adjust figure size as needed
-    fig.suptitle(f'Training and Validation Loss for Selected Simulations @ n_epoch = {n_epoch}')
+    fig.suptitle(f'Training and Validation Loss for Selected Simulations @ train_size = {train_size}')
 
     # Flatten the axes array for easy indexing, in case of a single row or column
     axes = axes.flatten()
@@ -639,7 +641,7 @@ def plot_simulation_surLoss_losses_in_grid(selected_indices, losses_dict, n_epoc
     plt.close(fig)  # Close the plot to free up memory
 
 
-def plot_simulation_Qlearning_losses_in_grid(selected_indices, losses_dict, run_name, folder, cols=3):
+def plot_simulation_Qlearning_losses_in_grid(selected_indices, losses_dict, train_size, run_name, folder, cols=3):
 
     all_losses = {
         'train_losses_stage1': {},
@@ -660,7 +662,7 @@ def plot_simulation_Qlearning_losses_in_grid(selected_indices, losses_dict, run_
     
     rows = len(selected_indices) // cols + (len(selected_indices) % cols > 0)
     fig, axes = plt.subplots(rows, cols, figsize=(5*cols, 4*rows))
-    fig.suptitle('Training and Validation Loss for Selected Simulations')
+    fig.suptitle(f'Training and Validation Loss for Selected Simulations @ train_size = {train_size}')
 
     axes = axes.flatten()
 
@@ -984,7 +986,7 @@ def process_batches_DQL(model, inputs, actions, targets, params, optimizer, is_t
 
 
 
-def train_and_validate(model, optimizer, scheduler, train_inputs, train_actions, train_targets, val_inputs, val_actions, val_targets, params, stage_number):
+def train_and_validate(config_number, model, optimizer, scheduler, train_inputs, train_actions, train_targets, val_inputs, val_actions, val_targets, params, stage_number):
 
     batch_size, device, n_epoch, sample_size = params['batch_size'], params['device'], params['n_epoch'], params['sample_size']
     train_losses, val_losses = [], []
@@ -1016,94 +1018,10 @@ def train_and_validate(model, optimizer, scheduler, train_inputs, train_actions,
         
     # Save the best model parameters after all epochs
     if best_model_params is not None:
-        model_path = os.path.join(model_dir, f'best_model_stage_Q_{stage_number}_{sample_size}.pt')
+        model_path = os.path.join(model_dir, f'best_model_stage_Q_{stage_number}_{sample_size}_config_number_{config_number}.pt')
         torch.save(best_model_params, model_path)
         
     return train_losses, val_losses, epoch_num_model
-
-
-# def train_and_validate(model, optimizer, scheduler, train_inputs, train_actions, train_targets, val_inputs, val_actions, val_targets, params, stage_number):
-
-#     batch_size, device, n_epoch, sample_size = params['batch_size'], params['device'], params['n_epoch'], params['sample_size']
-#     train_losses, val_losses = [], []
-#     best_val_loss = float('inf')
-#     best_model_params = None
-#     epoch_num_model = 0
-
-#     for epoch in range(n_epoch):
-#         model.train()
-#         total_train_loss = 0
-
-#         for batch_idx in batches(train_inputs.shape[0], batch_size, epoch):
-#             batch_idx = batch_idx.to(device)
-#             inputs_batch = torch.index_select(train_inputs, 0, batch_idx).to(device)
-#             actions_batch = torch.index_select(train_actions, 0, batch_idx).to(device)
-#             targets_batch = torch.index_select(train_targets, 0, batch_idx).to(device)
-#             combined_inputs = torch.cat((inputs_batch, actions_batch.unsqueeze(-1)), dim=1)
-
-#             optimizer.zero_grad()
-#             outputs = model(combined_inputs)
-#             loss = F.mse_loss(torch.cat(outputs, dim=0).view(-1), targets_batch)
-#             # print("Qnn output: ", torch.cat(outputs, dim=0).view(-1))
-#             # print("targets_batch: ", targets_batch)
-#             total_train_loss += loss.item()
-#             loss.backward(retain_graph=True)
-#             optimizer.step()
-
-
-#         num_batches_t = (train_inputs.shape[0] + batch_size - 1) // batch_size
-#         avg_train_loss = total_train_loss / num_batches_t
-
-#         train_losses.append(avg_train_loss)
-
-#         model.eval()
-#         total_val_loss = 0
-
-#         with torch.no_grad():
-#             for batch_idx in batches(val_inputs.shape[0], batch_size):
-#                 batch_idx = batch_idx.to(device)
-#                 inputs_batch = torch.index_select(val_inputs, 0, batch_idx).to(device)
-#                 actions_batch = torch.index_select(val_actions, 0, batch_idx).to(device)
-#                 targets_batch = torch.index_select(val_targets, 0, batch_idx).to(device)
-#                 combined_inputs = torch.cat((inputs_batch, actions_batch.unsqueeze(-1)), dim=1)
-
-#                 outputs = model(combined_inputs)
-#                 loss = F.mse_loss(torch.cat(outputs, dim=0).view(-1), targets_batch)
-
-#                 total_val_loss += loss.item()
-
-#         num_batches_v = (val_inputs.shape[0] + batch_size - 1) // batch_size
-#         avg_val_loss = total_val_loss / num_batches_v
-#         val_losses.append(avg_val_loss)
-
-#         if avg_val_loss < best_val_loss and epoch > 20:
-#             epoch_num_model = epoch
-#             best_val_loss = avg_val_loss
-#             best_model_params = model.state_dict()
-
-#         # scheduler.step()
-
-#     # Define file paths for saving models
-#     model_dir = f"models/{params['job_id']}"
-#     # Check if the directory exists, if not, create it
-#     if not os.path.exists(model_dir):
-#         os.makedirs(model_dir)
-        
-#     # Save the best model parameters after all epochs
-#     if best_model_params is not None:
-#         model_path = os.path.join(model_dir, f'best_model_stage_Q_{stage_number}_{sample_size}.pt')
-#         torch.save(best_model_params, model_path)
-        
-#     return train_losses, val_losses, epoch_num_model
-
-
-# def initialize_model_and_optimizer(params, stage):
-#     nn = initialize_nn(params, stage).to(device)
-#     optimizer = optim.Adam(nn.parameters(), lr=params['optimizer_lr'])
-#     # optimizer = optim.Adam(nn.parameters(), lr=params['optimizer_lr'], betas=params['optimizer_betas'], eps=params['optimizer_eps'])
-#     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=params['scheduler_step_size'], gamma=params['scheduler_gamma'])
-#     return nn, optimizer, scheduler
-
 
 
 def initialize_model_and_optimizer(params, stage):
@@ -1246,16 +1164,16 @@ def calculate_policy_values(Y1_tensor, Y2_tensor, d1_star, d2_star, Y1_pred, Y2_
 
 
 
-def initialize_and_load_model(stage, sample_size, params):
+def initialize_and_load_model(stage, sample_size, params, config_number):
     # Initialize the neural network model
     nn_model = initialize_nn(params, stage).to(params['device'])
     
     # Define the directory and file name for the model
     model_dir = f"models/{params['job_id']}"
     if params['f_model']=="surr_opt":
-        model_filename = f'best_model_stage_surr_{stage}_{sample_size}.pt'
+        model_filename = f'best_model_stage_surr_{stage}_{sample_size}_config_number_{config_number}.pt'
     else:
-        model_filename = f'best_model_stage_Q_{stage}_{sample_size}.pt'
+        model_filename = f'best_model_stage_Q_{stage}_{sample_size}_config_number_{config_number}.pt'
         
     model_path = os.path.join(model_dir, model_filename)
     
