@@ -275,7 +275,21 @@ def run_training(config, config_updates, V_replications, replication_seed):
     print("accuracy_df: \n", accuracy_df, "\n\n")
     return accuracy_df, df, losses_dict, epoch_num_model_lst
     
+    
+class FlushFile:
+    """File-like wrapper that flushes on every write."""
+    def __init__(self, f):
+        self.f = f
 
+    def write(self, x):
+        self.f.write(x)
+        self.f.flush()  # Flush output after write
+
+    def flush(self):
+        self.f.flush()
+
+
+        
         
         
 
@@ -517,6 +531,8 @@ def main():
     # Perform operations whose output should go to the file
     run_grid_search(config, param_grid)
     
+
+
     
 if __name__ == '__main__':
     multiprocessing.set_start_method('spawn', force=True)
@@ -526,6 +542,7 @@ if __name__ == '__main__':
     start_time_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))
     print(f'Start time: {start_time_str}')
     
+    sys.stdout = FlushFile(sys.stdout)
     main()
     
     # Record the end time
@@ -538,16 +555,7 @@ if __name__ == '__main__':
     print(f'Total time taken: {total_time:.2f} seconds')
 
 
-
-# if __name__ == '__main__':
-#     multiprocessing.set_start_method('spawn', force=True)
-#     start_time = time.time()
-#     main()
-#     end_time = time.time()
-#     print(f'Total time taken: {end_time - start_time:.2f} seconds')
-
-
-
+    
 
     
     
@@ -556,109 +564,4 @@ if __name__ == '__main__':
     
     
     
-
-
-
-
-# setting = 'tao'
-# f_model = 'DQlearning' #  'DQlearning', 'surr_opt'
-# print("\n")
-
-# sample_size = 15000  # 500, 1000 are the cases to check
-# num_replications = 3
-# n_epoch = 150 # 150
-
-# training_validation_prop = 0.5 #0.95 #0.01
-# train_size = int(training_validation_prop * sample_size)
-# print("Training size: ", train_size)
-
-# # batch_prop = 0.2 #0.07, 0.2
-# batch_size = 3000 # 64, 128, 256, 512, 3000
-# print("Mini-batch size: ", batch_size)
-
-
-# noiseless = True # True False. # no noise
-# tree_type =  True # True False
-
-# surrogate_num = 1 # 1 - old multiplicative one  2- new one
-# option_sur = 2 # 2, 4 # if surrogate_num = 1 then from 1-5 options, if surrogate_num = 2 then 1-> assymetric, 2 -> symmetric
-
-
-# # Set the device
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-
-    
-
-# config = {
-    
-#   'f_model' : f_model, 
-#   'setting': setting,
-#   'device':device,
-#   'noiseless':noiseless,   # Boolean flag to indicate if the noise
-#   'sample_size':sample_size,
-#   'batch_size': batch_size, # math.ceil(batch_prop*sample_size), #int(0.038*sample_size),
-#   'training_validation_prop':training_validation_prop,
-#   'n_epoch': n_epoch,
-#   'job_id':'taoV',
-    
-#   'num_networks': 2,
-#   'input_dim_stage1': 5, # [O1] --> [x1,...x5]
-#   'output_dim_stage1': 1,
-#   'input_dim_stage2': 7, # [O1, A1, Y1, O2]
-#   'output_dim_stage2': 1,
-#   'hidden_dim_stage1': 20, #20
-#   'hidden_dim_stage2': 20, #20
-#   'dropout_rate': 0.4, #0.3, 0.43
-#   'activation_function':'relu',
-#    'num_layers': 2,
-
-#   'optimizer_type': 'adam',  # Can be 'adam' or 'rmsprop'
-#   'optimizer_lr': 0.07, # 0.07, 0.007
-#   'optimizer_weight_decay': 0.001,  #1e-4,  Default: 0. Weight decay (L2 regularization) helps prevent overfitting by penalizing large weights.
-
-#   'use_scheduler': True, # True False
-#   'scheduler_type': 'reducelronplateau',  # Can be 'reducelronplateau', 'steplr', or 'cosineannealing'
-#   'scheduler_step_size': 30, # optim.lr_scheduler.StepLR
-#   'scheduler_gamma': 0.8,
-
-#   'initializer': 'he', # he, custon # He initialization (aka Kaiming initialization)
-
-#   # 'f_model': 'surr_opt',
-#   'surrogate_num': surrogate_num,
-#   'option_sur': option_sur, # if surrogate_num = 1 then 5 options, if surrogate_num = 2 then 1-> assymetric, 2 -> symmetric
-# }
-
-
-# if config['f_model'] != 'surr_opt':
-#     config['input_dim_stage1'] = 6
-#     config['input_dim_stage2'] = 8 
-#     config['num_networks'] = 1
-
-# job_id = os.getenv('SLURM_JOB_ID')
-# config['job_id'] = job_id
-
-
-# # Initialize V_replications dictionary
-# V_replications = {"V_replications_M1_pred": [], "V_replications_M1_behavioral": [], "V_replications_M1_optimal": []}
-
-# print('DGP Setting: ' , setting)
-# print("f_model: ", f_model)
-
-# # Run the simulation
-# V_replications, df, losses_dict, epoch_num_model_lst = simulations(num_replications, V_replications, config)
-# # summarize_v_values(V_replications, num_replications)
-# accuracy_df = calculate_accuracies(df, V_replications)
-# print(accuracy_df)
-
-# run_name = f"Simulation run trainVval"
-# selected_indices = [i for i in range(num_replications)]
-# folder = f"data/{config['job_id']}"
-
-# if  config['f_model'] == 'surr_opt' : 
-#     plot_simulation_surLoss_losses_in_grid(selected_indices, losses_dict, n_epoch, run_name, folder)
-# else:
-#     plot_simulation_Qlearning_losses_in_grid(selected_indices, losses_dict, run_name, folder)
-
-
 
